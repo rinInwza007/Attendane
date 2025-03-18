@@ -3,6 +3,7 @@ import 'package:myproject2/presentation/screens/profile/login_screen.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'core/service_locator.dart';
 
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 

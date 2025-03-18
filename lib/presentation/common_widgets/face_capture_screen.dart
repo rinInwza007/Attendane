@@ -1,8 +1,10 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
+import 'package:gal/gal.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as path;
+
 
 class FaceCaptureScreen extends StatefulWidget {
   final Function(String imagePath)? onImageCaptured;
@@ -27,11 +29,14 @@ class FaceCaptureScreenState extends State<FaceCaptureScreen>
   bool _isProcessing = false;
 
   @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addObserver(this);
+void initState() {
+  super.initState();
+  WidgetsBinding.instance.addObserver(this);
+  
+  WidgetsBinding.instance.addPostFrameCallback((_) {
     _initializeCamera();
-  }
+  });
+}
 
   @override
   void dispose() {
@@ -55,38 +60,49 @@ class FaceCaptureScreenState extends State<FaceCaptureScreen>
   }
 
   Future<void> _initializeCamera() async {
-    try {
-      _cameras = await availableCameras();
+  try {
+    print("เริ่มการเปิดกล้อง");
+    
+    // ขอรายการกล้องที่มีอยู่
+    _cameras = await availableCameras();
+    print("พบกล้อง: ${_cameras.length} ตัว");
 
-      if (_cameras.isEmpty) {
-        _showErrorSnackBar('No cameras available');
-        return;
-      }
-
-      // Select front camera
-      final frontCamera = _cameras.firstWhere(
-        (camera) => camera.lensDirection == CameraLensDirection.front,
-        orElse: () => _cameras.first,
-      );
-
-      // Initialize controller
-      _controller = CameraController(
-        frontCamera,
-        ResolutionPreset.medium,
-        enableAudio: false,
-      );
-
-      await _controller!.initialize();
-
-      if (!mounted) return;
-
-      setState(() {
-        _isCameraInitialized = true;
-      });
-    } catch (e) {
-      _showErrorSnackBar('Error initializing camera: $e');
+    if (_cameras.isEmpty) {
+      print("ไม่พบกล้องที่ใช้งานได้");
+      _showErrorSnackBar('ไม่พบกล้องที่ใช้งานได้');
+      return;
     }
+
+    // เลือกกล้องหน้า หรือกล้องแรกหากไม่มีกล้องหน้า
+    final frontCamera = _cameras.firstWhere(
+      (camera) => camera.lensDirection == CameraLensDirection.front,
+      orElse: () => _cameras.first,
+    );
+    print("ใช้กล้อง: ${frontCamera.name}, ทิศทาง: ${frontCamera.lensDirection}");
+
+    // สร้าง controller
+    _controller = CameraController(
+      frontCamera,
+      ResolutionPreset.medium,
+      enableAudio: false,
+      imageFormatGroup: ImageFormatGroup.jpeg,
+    );
+    print("สร้าง CameraController สำเร็จ กำลังเริ่มต้น...");
+    // รอให้การเริ่มต้นเสร็จสิ้น
+    await _controller!.initialize();
+    print("เริ่มต้นกล้องสำเร็จ");
+
+    if (!mounted) return;
+
+    setState(() {
+      _isCameraInitialized = true;
+      print("ตั้งค่า _isCameraInitialized = true");
+    });
+  } catch (e) {
+    print("เกิดข้อผิดพลาดในการเริ่มต้นกล้อง: $e");
+    _showErrorSnackBar('เกิดข้อผิดพลาดในการเริ่มต้นกล้อง: $e');
   }
+}
 
   Future<void> _takePicture() async {
     if (_controller == null ||
@@ -173,6 +189,8 @@ class FaceCaptureScreenState extends State<FaceCaptureScreen>
       SnackBar(content: Text(message)),
     );
   }
+
+  
 
   @override
   Widget build(BuildContext context) {
