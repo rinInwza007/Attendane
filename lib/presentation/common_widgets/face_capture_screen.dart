@@ -1,10 +1,8 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
-import 'package:gal/gal.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as path;
-
 
 class FaceCaptureScreen extends StatefulWidget {
   final Function(String imagePath)? onImageCaptured;
@@ -27,16 +25,19 @@ class FaceCaptureScreenState extends State<FaceCaptureScreen>
   String? _imagePath;
   bool _isCameraInitialized = false;
   bool _isProcessing = false;
+  bool _hasError = false;
+  String _errorMessage = '';
 
   @override
-void initState() {
-  super.initState();
-  WidgetsBinding.instance.addObserver(this);
-  
-  WidgetsBinding.instance.addPostFrameCallback((_) {
-    _initializeCamera();
-  });
-}
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    
+    // Initialize camera after the first frame is rendered
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _initializeCamera();
+    });
+  }
 
   @override
   void dispose() {
@@ -55,54 +56,72 @@ void initState() {
     if (state == AppLifecycleState.inactive) {
       _controller?.dispose();
     } else if (state == AppLifecycleState.resumed) {
+      // Re-initialize camera on resume
       _initializeCamera();
     }
   }
 
   Future<void> _initializeCamera() async {
-  try {
-    print("เริ่มการเปิดกล้อง");
-    
-    // ขอรายการกล้องที่มีอยู่
-    _cameras = await availableCameras();
-    print("พบกล้อง: ${_cameras.length} ตัว");
+    try {
+      setState(() {
+        _hasError = false;
+        _errorMessage = '';
+      });
+      
+      debugPrint("Starting camera initialization");
+      
+      // Get available cameras
+      _cameras = await availableCameras();
+      debugPrint("Found ${_cameras.length} cameras");
 
-    if (_cameras.isEmpty) {
-      print("ไม่พบกล้องที่ใช้งานได้");
-      _showErrorSnackBar('ไม่พบกล้องที่ใช้งานได้');
-      return;
+      if (_cameras.isEmpty) {
+        _setError('No cameras available on this device');
+        return;
+      }
+
+      // Select front camera or default to the first camera
+      final frontCamera = _cameras.firstWhere(
+        (camera) => camera.lensDirection == CameraLensDirection.front,
+        orElse: () => _cameras.first,
+      );
+      debugPrint("Using camera: ${frontCamera.name}, direction: ${frontCamera.lensDirection}");
+
+      // Create controller
+      _controller = CameraController(
+        frontCamera,
+        ResolutionPreset.medium,
+        enableAudio: false,
+        imageFormatGroup: ImageFormatGroup.jpeg,
+      );
+      
+      debugPrint("Created CameraController, initializing...");
+      
+      // Initialize controller
+      await _controller!.initialize();
+      debugPrint("Camera initialized successfully");
+
+      if (!mounted) return;
+
+      setState(() {
+        _isCameraInitialized = true;
+      });
+    } catch (e) {
+      debugPrint("Error initializing camera: $e");
+      _setError('Failed to initialize camera: $e');
     }
-
-    // เลือกกล้องหน้า หรือกล้องแรกหากไม่มีกล้องหน้า
-    final frontCamera = _cameras.firstWhere(
-      (camera) => camera.lensDirection == CameraLensDirection.front,
-      orElse: () => _cameras.first,
-    );
-    print("ใช้กล้อง: ${frontCamera.name}, ทิศทาง: ${frontCamera.lensDirection}");
-
-    // สร้าง controller
-    _controller = CameraController(
-      frontCamera,
-      ResolutionPreset.medium,
-      enableAudio: false,
-      imageFormatGroup: ImageFormatGroup.jpeg,
-    );
-    print("สร้าง CameraController สำเร็จ กำลังเริ่มต้น...");
-    // รอให้การเริ่มต้นเสร็จสิ้น
-    await _controller!.initialize();
-    print("เริ่มต้นกล้องสำเร็จ");
-
-    if (!mounted) return;
-
-    setState(() {
-      _isCameraInitialized = true;
-      print("ตั้งค่า _isCameraInitialized = true");
-    });
-  } catch (e) {
-    print("เกิดข้อผิดพลาดในการเริ่มต้นกล้อง: $e");
-    _showErrorSnackBar('เกิดข้อผิดพลาดในการเริ่มต้นกล้อง: $e');
   }
-}
+
+  void _setError(String message) {
+    if (!mounted) return;
+    
+    setState(() {
+      _hasError = true;
+      _errorMessage = message;
+      _isCameraInitialized = false;
+    });
+    
+    _showErrorSnackBar(message);
+  }
 
   Future<void> _takePicture() async {
     if (_controller == null ||
@@ -190,7 +209,14 @@ void initState() {
     );
   }
 
-  
+  void _retryInitialization() {
+    setState(() {
+      _hasError = false;
+      _errorMessage = '';
+      _isCameraInitialized = false;
+    });
+    _initializeCamera();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -228,12 +254,15 @@ void initState() {
               child: Stack(
                 alignment: Alignment.center,
                 children: [
-                  if (!_isCameraInitialized)
+                  if (_hasError)
+                    _buildErrorView()
+                  else if (!_isCameraInitialized)
                     const Center(child: CircularProgressIndicator())
                   else if (_imagePath == null)
                     CameraPreview(_controller!)
                   else
                     Image.file(File(_imagePath!)),
+                    
                   if (_imagePath == null && _isCameraInitialized)
                     Positioned.fill(
                       child: CustomPaint(
@@ -255,11 +284,19 @@ void initState() {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                 children: [
-                  if (_imagePath == null)
+                  if (_hasError)
                     FloatingActionButton(
-                      onPressed: _isProcessing ? null : _takePicture,
+                      onPressed: _retryInitialization,
+                      backgroundColor: Colors.blue,
+                      child: const Icon(Icons.refresh),
+                    )
+                  else if (_imagePath == null)
+                    FloatingActionButton(
+                      onPressed: _isCameraInitialized && !_isProcessing 
+                        ? _takePicture 
+                        : null,
                       backgroundColor:
-                          _isProcessing ? Colors.grey : Colors.blue,
+                          _isCameraInitialized && !_isProcessing ? Colors.blue : Colors.grey,
                       child: const Icon(Icons.camera_alt),
                     )
                   else
@@ -270,6 +307,42 @@ void initState() {
                     ),
                 ],
               ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildErrorView() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(
+              Icons.error_outline,
+              color: Colors.red,
+              size: 64,
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Camera Error',
+              style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                    color: Colors.red,
+                  ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              _errorMessage,
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 16),
+            ElevatedButton.icon(
+              onPressed: _retryInitialization,
+              icon: const Icon(Icons.refresh),
+              label: const Text('Retry'),
             ),
           ],
         ),

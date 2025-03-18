@@ -3,14 +3,17 @@
 <plist version="1.0">
 <dict>
 	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>This app needs access to save captured face images for attendance verification</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>This app needs access to the photo library to save face images for authentication</string>
 	<key>NSCameraUsageDescription</key>
-	<string>your usage description here</string>
+	<string>This app needs camera access to capture your face for authentication and attendance</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>your usage description here</string>
+	<string>This app needs microphone access for video capture functionality</string>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>Myproject2</string>
+	<string>Attendance Plus</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
