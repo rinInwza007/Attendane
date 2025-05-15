@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:myproject2/data/services/face_recognition_service.dart';
-import 'package:myproject2/presentation/common_widgets/face_capture_screen.dart';
+import 'package:myproject2/presentation/common_widgets/image_picker_screen.dart';
 import 'package:myproject2/presentation/screens/profile/auth_server.dart';
 import 'package:myproject2/presentation/screens/settings/setting.dart';
+import 'dart:convert';
+
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class Profile extends StatefulWidget {
   const Profile({super.key});
@@ -174,14 +177,14 @@ class _ProfileState extends State<Profile> {
           builder: (context) => AlertDialog(
             title: const Text('ข้อมูลไม่ครบถ้วน'),
             content: const Text(
-                'คุณยังไม่ได้บันทึกข้อมูลใบหน้า กรุณาถ่ายภาพเพื่อใช้ในการเช็คชื่อ'),
+                'คุณยังไม่ได้บันทึกข้อมูลใบหน้า กรุณาเลือกรูปภาพใบหน้าเพื่อใช้ในการเช็คชื่อ'),
             actions: [
               ElevatedButton(
                 onPressed: () {
                   Navigator.of(context).pop();
                   _navigateToCamera();
                 },
-                child: const Text('ถ่ายรูป'),
+                child: const Text('เลือกรูปภาพ'),
               ),
             ],
           ),
@@ -200,134 +203,104 @@ class _ProfileState extends State<Profile> {
 
   Future<void> _navigateToCamera() async {
     try {
-      final String? result = await Navigator.push<String>(
+      // ไม่เรียก callback onImageCaptured เพื่อหลีกเลี่ยงปัญหา widget lifecycle
+      final String? imagePath = await Navigator.push<String>(
         context,
         MaterialPageRoute(
-          builder: (context) => FaceCaptureScreen(
-            onImageCaptured: (String path) async {
-              if (mounted) {
-                setState(() => _isLoading = true);
-                try {
-                  final faceService = FaceRecognitionService();
-                  final embedding = await faceService.getFaceEmbedding(path);
-                  faceService.dispose();
-
-                  if (embedding == null) {
-                    throw Exception(
-                        'ไม่พบใบหน้าในภาพ หรือพบใบหน้ามากกว่า 1 ใบหน้า');
-                  }
-
-                  await _authService.saveFaceEmbedding(embedding);
-
-                  if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('บันทึกข้อมูลใบหน้าสำเร็จ')),
-                    );
-                  }
-                } catch (e) {
-                  if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                          content: Text('เกิดข้อผิดพลาด: ${e.toString()}')),
-                    );
-                  }
-                  // รอสักครู่ก่อนเปิดกล้องใหม่
-                  await Future.delayed(const Duration(seconds: 1));
-                  if (mounted) {
-                    _navigateToCamera();
-                  }
-                } finally {
-                  if (mounted) {
-                    setState(() => _isLoading = false);
-                  }
-                }
-              }
-            },
+          builder: (context) => ImagePickerScreen(
+            instructionText: "กรุณาเลือกรูปภาพที่เห็นใบหน้าชัดเจน ไม่สวมแว่นตา และต้องมีเพียงใบหน้าของคุณเท่านั้น",
           ),
         ),
       );
 
-      if (result == null) {
+      // ทำงานต่อเมื่อได้รับรูปภาพกลับมา
+      if (imagePath != null && mounted) {
+        setState(() => _isLoading = true);
+        
+        try {
+          // ประมวลผลใบหน้า
+          final faceService = FaceRecognitionService();
+          await faceService.initialize();
+          final embedding = await faceService.getFaceEmbedding(imagePath);
+          await faceService.dispose();
+
+          // บันทึกลงฐานข้อมูล
+          await _authService.saveFaceEmbedding(embedding);
+
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('บันทึกข้อมูลใบหน้าสำเร็จ')),
+            );
+            setState(() {}); // Refresh UI to update face data section
+          }
+        } catch (e) {
+          if (mounted) {
+            String errorMessage = 'เกิดข้อผิดพลาด: ${e.toString()}';
+            
+            if (e.toString().contains('ไม่พบใบหน้า')) {
+              errorMessage = 'ไม่พบใบหน้าในรูปภาพ กรุณาเลือกรูปที่เห็นใบหน้าชัดเจน';
+            } else if (e.toString().contains('พบใบหน้าหลาย')) {
+              errorMessage = 'พบใบหน้าหลายใบในรูปภาพ กรุณาเลือกรูปที่มีเพียงใบหน้าของคุณเท่านั้น';
+            }
+            
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(errorMessage),
+                duration: const Duration(seconds: 5),
+                action: SnackBarAction(
+                  label: 'ลองใหม่',
+                  onPressed: () {
+                    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                    _navigateToCamera();
+                  },
+                ),
+              ),
+            );
+          }
+        } finally {
+          if (mounted) {
+            setState(() => _isLoading = false);
+          }
+        }
+      } else if (mounted) {
         // ถ้าผู้ใช้ยกเลิก ให้ตรวจสอบอีกครั้ง
         await Future.delayed(const Duration(seconds: 1));
-        if (mounted) {
-          _checkFaceData();
-        }
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-              content: Text('เกิดข้อผิดพลาดในการเปิดกล้อง: ${e.toString()}')),
-        );
-      }
-    }
-  }
-
-  Future<void> _captureImage() async {
-    try {
-      final imagePath = await Navigator.push<String>(
-        context,
-        MaterialPageRoute(
-          builder: (context) => FaceCaptureScreen(
-            onImageCaptured: (path) async {
-              if (path != null) {
-                setState(() => _isLoading = true);
-
-                try {
-                  // ประมวลผลใบหน้า
-                  final faceService = FaceRecognitionService();
-                  final embedding = await faceService.getFaceEmbedding(path);
-                  faceService.dispose();
-
-                  if (embedding == null) {
-                    throw Exception(
-                        'ไม่พบใบหน้าในภาพ หรือพบใบหน้ามากกว่า 1 ใบหน้า');
-                  }
-
-                  // บันทึกลงฐานข้อมูล
-                  await _authService.saveFaceEmbedding(embedding);
-
-                  if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('บันทึกข้อมูลใบหน้าสำเร็จ')),
-                    );
-                    Navigator.pop(context); // ปิดหน้ากล้อง
-                  }
-                } catch (e) {
-                  if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                          content: Text('เกิดข้อผิดพลาด: ${e.toString()}')),
-                    );
-                  }
-                  // ให้ลองใหม่ถ้าเกิดข้อผิดพลาด
-                  _captureImage();
-                } finally {
-                  if (mounted) {
-                    setState(() => _isLoading = false);
-                  }
-                }
-              }
-            },
-          ),
-        ),
-      );
-
-      if (imagePath == null) {
-        // ถ้าผู้ใช้ยกเลิก ให้ตรวจสอบอีกครั้ง
         _checkFaceData();
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('เกิดข้อผิดพลาด: ${e.toString()}')),
+          SnackBar(
+              content: Text('เกิดข้อผิดพลาดในการเลือกรูปภาพ: ${e.toString()}')),
         );
-        // ให้ลองใหม่
-        _captureImage();
       }
     }
   }
+
+  Future<Map<String, dynamic>?> _getFaceEmbeddingDetails() async {
+  try {
+    final email = _authService.getCurrentUserEmail();
+    if (email == null) return null;
+    
+    try {
+      // เข้าถึง Supabase.instance.client แทน _authService._supabase
+      final response = await Supabase.instance.client
+          .from('student_face_embeddings')
+          .select('id, face_quality, created_at, updated_at')
+          .eq('student_id', email)  // ใช้ email เป็น student_id ชั่วคราว
+          .eq('is_active', true)
+          .single();
+      
+      return response;
+    } catch (e) {
+      print('Error fetching face details: $e');
+      return null;
+    }
+  } catch (e) {
+    print('Error in _getFaceEmbeddingDetails: $e');
+    return null;
+  }
+}
 
   Widget _previewInfoRow(String label, String? value) {
     return Padding(
@@ -507,11 +480,202 @@ class _ProfileState extends State<Profile> {
     );
   }
 
+  Future<void> _deactivateFaceEmbedding() async {
+  try {
+    final email = _authService.getCurrentUserEmail();
+    if (email == null) return;
+    
+    // เข้าถึง Supabase โดยตรง
+    await Supabase.instance.client
+        .from('student_face_embeddings')
+        .update({
+          'is_active': false,
+          'updated_at': DateTime.now().toIso8601String()
+        })
+        .eq('student_id', email);  // ใช้ email เป็น student_id ชั่วคราว
+    
+    setState(() {});
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('ลบข้อมูลใบหน้าเรียบร้อยแล้ว'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    }
+  } catch (e) {
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('เกิดข้อผิดพลาดในการลบข้อมูลใบหน้า: ${e.toString()}'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+}
+
   void _toggleFavorite(int index) {
     setState(() {
       _joinedClasses[index]['isFavorite'] =
           !_joinedClasses[index]['isFavorite'];
     });
+  }
+
+  Widget _buildFaceDataInfo() {
+    return FutureBuilder<Map<String, dynamic>?>(
+      future: _getFaceEmbeddingDetails(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        
+        final faceData = snapshot.data;
+        
+        if (faceData == null) {
+          return Card(
+            margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'ข้อมูลใบหน้า',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  const Center(
+                    child: Text('ไม่มีข้อมูลใบหน้า',
+                      style: TextStyle(color: Colors.grey),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      onPressed: _navigateToCamera,
+                      icon: const Icon(Icons.add_a_photo_outlined),
+                      label: const Text('เพิ่มข้อมูลใบหน้า'),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        }
+        
+        // คำนวณคุณภาพเป็นเปอร์เซ็นต์
+        final quality = faceData['face_quality'] ?? 0.0;
+        final qualityPercent = (quality * 100).toStringAsFixed(0);
+        
+        // แปลงวันที่
+        final updatedAt = faceData['updated_at'] != null
+            ? DateTime.parse(faceData['updated_at']).toLocal()
+            : null;
+        
+        return Card(
+          margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          child: Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('ข้อมูลใบหน้า',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 16),
+                
+                Row(
+                  children: [
+                    const Text('คุณภาพภาพใบหน้า: '),
+                    const SizedBox(width: 8),
+                    _buildQualityIndicator(quality),
+                    const SizedBox(width: 8),
+                    Text('$qualityPercent%',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: _getQualityColor(quality),
+                      ),
+                    ),
+                  ],
+                ),
+                
+                const SizedBox(height: 8),
+                if (updatedAt != null)
+                  Text('อัปเดตล่าสุด: ${_formatDate(updatedAt)}'),
+                
+                const SizedBox(height: 16),
+                
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: [
+                    OutlinedButton.icon(
+                      onPressed: _navigateToCamera,
+                      icon: const Icon(Icons.refresh),
+                      label: const Text('อัปเดตใหม่'),
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      ),
+                    ),
+                    ElevatedButton.icon(
+                      onPressed: _deactivateFaceEmbedding,
+                      icon: const Icon(Icons.delete_outline),
+                      label: const Text('ลบข้อมูล'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.red.shade100,
+                        foregroundColor: Colors.red.shade700,
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildQualityIndicator(double quality) {
+    Color color = _getQualityColor(quality);
+    
+    return Container(
+      width: 100,
+      height: 10,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(5),
+        color: Colors.grey.shade200,
+      ),
+      child: FractionallySizedBox(
+        widthFactor: quality,
+        alignment: Alignment.centerLeft,
+        child: Container(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(5),
+            color: color,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Color _getQualityColor(double quality) {
+    if (quality >= 0.9) {
+      return Colors.green;
+    } else if (quality >= 0.7) {
+      return Colors.orange;
+    } else {
+      return Colors.red;
+    }
+  }
+
+  String _formatDate(DateTime date) {
+    return '${date.day}/${date.month}/${date.year} ${date.hour}:${date.minute.toString().padLeft(2, '0')}';
   }
 
   @override
@@ -537,7 +701,7 @@ class _ProfileState extends State<Profile> {
             onPressed: () => Navigator.push(
               context,
               MaterialPageRoute(builder: (context) => const Setting()),
-            ),
+            ).then((_) => setState(() {})), // Refresh when returning
           ),
         ],
       ),
@@ -546,6 +710,7 @@ class _ProfileState extends State<Profile> {
           : Column(
               children: [
                 _buildProfileHeader(currentEmail),
+                _buildFaceDataInfo(),
                 const SizedBox(height: 16),
                 _buildTabBar(),
                 const SizedBox(height: 16),
@@ -691,10 +856,6 @@ class _ProfileState extends State<Profile> {
         ),
       ),
     );
-  }
-
-  String _formatDate(DateTime date) {
-    return '${date.day}/${date.month}/${date.year}';
   }
 
   Widget _buildJoinClassButton() {

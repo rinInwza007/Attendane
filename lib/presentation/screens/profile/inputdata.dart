@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:myproject2/data/services/face_recognition_service.dart';
-import 'package:myproject2/presentation/common_widgets/face_capture_screen.dart';
+import 'package:myproject2/presentation/common_widgets/image_picker_screen.dart';
 import 'package:myproject2/presentation/screens/profile/auth_server.dart';
 import 'package:myproject2/presentation/screens/profile/profile.dart';
 import 'package:myproject2/presentation/screens/profile/profileteachaer.dart';
@@ -143,68 +143,79 @@ class _InputDataPageState extends State<InputDataPage> {
   }
 
   Future<void> _handleFaceCapture() async {
-    try {
-      final imagePath = await Navigator.push<String>(
-        context,
-        MaterialPageRoute(
-          builder: (context) => FaceCaptureScreen(
-            onImageCaptured: (path) async {
-              if (path != null) {
-                // แสดง loading
-                setState(() => _isLoading = true);
-
-                try {
-                  // ประมวลผลใบหน้า
-                  final faceService = FaceRecognitionService();
-                  final embedding = await faceService.getFaceEmbedding(path);
-                  faceService.dispose();
-
-                  if (embedding == null) {
-                    throw Exception(
-                        'ไม่พบใบหน้าในภาพ หรือพบใบหน้ามากกว่า 1 ใบหน้า');
-                  }
-
-                  // บันทึกลงฐานข้อมูล
-                  await _authService.saveFaceEmbedding(embedding);
-
-                  if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('บันทึกข้อมูลใบหน้าสำเร็จ')),
-                    );
-                    Navigator.pop(context); // ปิดหน้ากล้อง
-                  }
-                } catch (e) {
-                  if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                          content: Text('เกิดข้อผิดพลาด: ${e.toString()}')),
-                    );
-                  }
-                } finally {
-                  if (mounted) {
-                    setState(() => _isLoading = false);
-                  }
-                }
-              }
-            },
-          ),
+  try {
+    // ไม่เรียก callback onImageCaptured เพื่อหลีกเลี่ยงปัญหา widget lifecycle
+    final String? imagePath = await Navigator.push<String>(
+      context,
+      MaterialPageRoute(
+        builder: (context) => ImagePickerScreen(
+          instructionText: "กรุณาเลือกรูปภาพที่เห็นใบหน้าชัดเจน และต้องมีเพียงใบหน้าของคุณเท่านั้น",
         ),
-      );
+      ),
+    );
 
-      if (imagePath == null) {
-        // ผู้ใช้ยกเลิกการถ่ายรูป ให้ลองใหม่
-        await _handleFaceCapture();
+    // ทำงานต่อเมื่อได้รับรูปภาพกลับมา
+    if (imagePath != null && mounted) {
+      setState(() => _isLoading = true);
+      
+      try {
+        // ประมวลผลใบหน้า
+        final faceService = FaceRecognitionService();
+        await faceService.initialize();
+        final embedding = await faceService.getFaceEmbedding(imagePath);
+        await faceService.dispose();
+
+        // บันทึกลงฐานข้อมูล
+        await _authService.saveFaceEmbedding(embedding);
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('บันทึกข้อมูลใบหน้าสำเร็จ')),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          String errorMessage = 'เกิดข้อผิดพลาด: ${e.toString()}';
+          
+          if (e.toString().contains('ไม่พบใบหน้า')) {
+            errorMessage = 'ไม่พบใบหน้าในรูปภาพ กรุณาเลือกรูปที่เห็นใบหน้าชัดเจน';
+          } else if (e.toString().contains('พบใบหน้าหลาย')) {
+            errorMessage = 'พบใบหน้าหลายใบในรูปภาพ กรุณาเลือกรูปที่มีเพียงใบหน้าของคุณเท่านั้น';
+          }
+          
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(errorMessage),
+              duration: const Duration(seconds: 5),
+              action: SnackBarAction(
+                label: 'ลองใหม่',
+                onPressed: () {
+                  ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                  _handleFaceCapture();
+                },
+              ),
+            ),
+          );
+        }
+      } finally {
+        if (mounted) {
+          setState(() => _isLoading = false);
+        }
       }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('เกิดข้อผิดพลาด: ${e.toString()}')),
-        );
-        // ให้ผู้ใช้ลองใหม่
-        await _handleFaceCapture();
-      }
+    } else if (mounted) {
+      // ถ้าผู้ใช้ยกเลิก ให้ลองใหม่
+      await _handleFaceCapture();
+    }
+  } catch (e) {
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('เกิดข้อผิดพลาด: ${e.toString()}')),
+      );
+      // ให้ผู้ใช้ลองใหม่
+      await _handleFaceCapture();
     }
   }
+}
 
   @override
   Widget build(BuildContext context) {

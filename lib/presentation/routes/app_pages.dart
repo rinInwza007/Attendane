@@ -1,4 +1,5 @@
 import 'package:get/get.dart';
+import 'package:myproject2/presentation/common_widgets/image_picker_screen.dart';
 import 'package:myproject2/presentation/screens/class/class_detail.dart';
 import 'package:myproject2/presentation/screens/profile/inputdata.dart';
 import 'package:myproject2/presentation/screens/profile/profile.dart';
@@ -6,7 +7,6 @@ import 'package:myproject2/presentation/screens/profile/profileteachaer.dart';
 import 'package:myproject2/presentation/screens/settings/setting.dart';
 import '../screens/profile/login_screen.dart';
 import '../screens/auth/register_screen.dart';
-import '../common_widgets/face_capture_screen.dart';
 import '../screens/splash_screen.dart';
 import '../../core/constants/route_constants.dart';
 import '../bindings/auth_binding.dart';
@@ -61,7 +61,7 @@ class AppPages {
     ),
     GetPage(
       name: RouteConstants.faceCapture,
-      page: () => FaceCaptureScreen(),
+      page: () => ImagePickerScreen(),
     ),
   ];
 }

@@ -30,6 +30,9 @@ android {
         versionName = flutter.versionName
         minSdkVersion 21
     }
+    aaptOptions {
+        noCompress 'tflite'
+    }
 
     buildTypes {
         release {
