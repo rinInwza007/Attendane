@@ -1,10 +1,11 @@
 import 'package:get/get.dart';
 import '../../data/models/class_model.dart';
-import '../../data/services/auth_service.dart';
+import '../../presentation/screens/profile/auth_server.dart'; // แก้ import
 import '../../core/service_locator.dart';
 
 class ClassController extends GetxController {
-  final _authService = getIt<AuthService>();
+  // เปลี่ยนจาก AuthService เป็น AuthServer
+  final AuthServer _authService = AuthServer();
 
   final RxList<ClassModel> _teacherClasses = <ClassModel>[].obs;
   final RxList<ClassModel> _studentClasses = <ClassModel>[].obs;
@@ -45,7 +46,22 @@ class ClassController extends GetxController {
   Future<void> loadTeacherClasses() async {
     try {
       final classes = await _authService.getTeacherClasses();
-      _teacherClasses.assignAll(classes);
+      
+      // แปลงข้อมูลจาก List<Map<String, dynamic>> เป็น List<ClassModel>
+      final classList = classes.map((classData) => ClassModel(
+        id: classData['class_id'] ?? '',
+        name: classData['class_name'] ?? '',
+        teacherEmail: classData['teacher_email'] ?? '',
+        schedule: classData['schedule'] ?? '',
+        room: classData['room'] ?? '',
+        inviteCode: classData['invite_code'] ?? '',
+        createdAt: classData['created_at'] != null
+            ? DateTime.parse(classData['created_at'])
+            : DateTime.now(),
+        isFavorite: false,
+      )).toList();
+      
+      _teacherClasses.assignAll(classList);
     } catch (e) {
       _errorMessage.value = e.toString();
     }
@@ -54,7 +70,20 @@ class ClassController extends GetxController {
   Future<void> loadStudentClasses() async {
     try {
       final classes = await _authService.getStudentClasses();
-      _studentClasses.assignAll(classes);
+      
+      // แปลงข้อมูลจาก List<Map<String, dynamic>> เป็น List<ClassModel>
+      final classList = classes.map((classData) => ClassModel(
+        id: classData['id'] ?? '',
+        name: classData['name'] ?? '',
+        teacherEmail: classData['teacher'] ?? '',
+        schedule: classData['schedule'] ?? '',
+        room: classData['room'] ?? '',
+        inviteCode: classData['code'] ?? '',
+        createdAt: classData['joinedDate'] ?? DateTime.now(),
+        isFavorite: classData['isFavorite'] ?? false,
+      )).toList();
+      
+      _studentClasses.assignAll(classList);
     } catch (e) {
       _errorMessage.value = e.toString();
     }
@@ -142,13 +171,13 @@ class ClassController extends GetxController {
       }
 
       // Check if already joined
-      if (_studentClasses.any((c) => c.id == classDetails.id)) {
+      if (_studentClasses.any((c) => c.id == classDetails['class_id'])) {
         _errorMessage.value = 'You have already joined this class';
         return false;
       }
 
       await _authService.joinClass(
-        classId: classDetails.id,
+        classId: classDetails['class_id'],
         studentEmail: email,
       );
 
@@ -193,7 +222,19 @@ class ClassController extends GetxController {
     try {
       final classDetail = await _authService.getClassDetail(classId);
       if (classDetail != null) {
-        _selectedClass.value = classDetail;
+        // แปลงข้อมูลจาก Map<String, dynamic> เป็น ClassModel
+        _selectedClass.value = ClassModel(
+          id: classDetail['class_id'] ?? '',
+          name: classDetail['class_name'] ?? '',
+          teacherEmail: classDetail['teacher_email'] ?? '',
+          schedule: classDetail['schedule'] ?? '',
+          room: classDetail['room'] ?? '',
+          inviteCode: classDetail['invite_code'] ?? '',
+          createdAt: classDetail['created_at'] != null
+              ? DateTime.parse(classDetail['created_at'])
+              : DateTime.now(),
+          isFavorite: false,
+        );
       }
     } catch (e) {
       _errorMessage.value = e.toString();

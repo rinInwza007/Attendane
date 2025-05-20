@@ -7,9 +7,12 @@
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-feature android:name="android.hardware.camera" />
     <uses-feature android:name="android.hardware.camera.autofocus" />
-    
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+   <!-- สำหรับ Android 9 (API level 28) และเก่ากว่า -->
+   <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
+   <!-- อนุญาตอื่นๆ ที่มีอยู่แล้ว -->
     <!-- สิทธิ์การจัดเก็บไฟล์ -->
-    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
+    
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" 
                      android:maxSdkVersion="28"
                      tools:replace="android:maxSdkVersion" />

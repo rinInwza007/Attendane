@@ -334,4 +334,18 @@ class AuthServer {
       'is_active': true,
     });
   }
+
+  Future<Map<String, dynamic>?> getUserProfile() async {
+  final email = getCurrentUserEmail();
+  if (email == null) return null;
+
+  try {
+    final response =
+        await _supabase.from('users').select().eq('email', email).single();
+    return response;
+  } catch (e) {
+    print('Error getting user profile: $e');
+    return null;
+  }
+}
 }

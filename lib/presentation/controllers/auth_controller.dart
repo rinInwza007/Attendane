@@ -1,10 +1,10 @@
 import 'package:get/get.dart';
 import '../../data/models/user_model.dart';
-import '../../data/services/auth_service.dart';
-import '../../core/service_locator.dart';
+import '../../presentation/screens/profile/auth_server.dart'; // แก้ import
 
 class AuthController extends GetxController {
-  final _authService = getIt<AuthService>();
+  // เปลี่ยนจาก AuthService เป็น AuthServer
+  final AuthServer _authService = AuthServer();
 
   final Rx<UserModel?> _currentUser = Rx<UserModel?>(null);
   final RxBool _isAuthenticated = false.obs;
@@ -43,9 +43,17 @@ class AuthController extends GetxController {
 
   Future<void> loadUserProfile() async {
     try {
-      final user = await _authService.getUserProfile();
-      if (user != null) {
-        _currentUser.value = user;
+      // ตรวจสอบชื่อเมธอดให้ถูกต้อง (อาจต้องเปลี่ยนจาก getUserProfile เป็น checkUserProfileExists หรืออื่นๆ)
+      final userProfile = await _authService.getUserProfile();
+      if (userProfile != null) {
+        // แปลงข้อมูลจาก Map เป็น UserModel
+        _currentUser.value = UserModel(
+          email: userProfile['email'] ?? '',
+          fullName: userProfile['full_name'] ?? '',
+          schoolId: userProfile['school_id'] ?? '',
+          userType: userProfile['user_type'] ?? '',
+          hasFaceData: await _authService.hasFaceEmbedding(),
+        );
         _isAuthenticated.value = true;
       } else {
         _isAuthenticated.value = false;
@@ -61,7 +69,8 @@ class AuthController extends GetxController {
     _errorMessage.value = '';
 
     try {
-      await _authService.signInWithEmailPassword(email, password);
+      // แก้ไขชื่อเมธอดให้ตรงกับที่มีใน AuthServer
+      await _authService.siginWithEmailPassword(email, password);
       await loadUserProfile();
       return true;
     } catch (e) {
@@ -77,7 +86,8 @@ class AuthController extends GetxController {
     _errorMessage.value = '';
 
     try {
-      await _authService.signUpWithEmailPassword(email, password);
+      // แก้ไขชื่อเมธอดให้ตรงกับที่มีใน AuthServer
+      await _authService.sigUpWithEmailPassword(email, password);
       return true;
     } catch (e) {
       _errorMessage.value = e.toString();
