@@ -281,41 +281,33 @@ class FaceRecognitionService extends BaseService {
   /// Verify if a face matches with a stored face embedding
   /// Returns true if the face is verified, false otherwise
   Future<bool> verifyFace(String studentId, List<double> capturedEmbedding, {double threshold = 0.7}) async {
-    try {
-      // ดึง embedding ที่บันทึกไว้ในฐานข้อมูล
-      final response = await _supabase
-          .from('student_face_embeddings')
-          .select('face_embedding, face_embedding_json')
-          .eq('student_id', studentId)
-          .eq('is_active', true)
-          .single();
-      
-      if (response == null) return false;
-      
-      List<double>? storedEmbedding;
-      
-      // ลองดึงจาก face_embedding ก่อน
-      if (response['face_embedding'] != null) {
-        storedEmbedding = List<double>.from(response['face_embedding']);
-      }
-      // ถ้าไม่มีให้ลองดึงจาก face_embedding_json
-      else if (response['face_embedding_json'] != null) {
-        final List<dynamic> jsonList = jsonDecode(response['face_embedding_json']);
-        storedEmbedding = jsonList.map((item) => item as double).toList();
-      }
-      
-      if (storedEmbedding == null || storedEmbedding.isEmpty) return false;
-      
-      // เปรียบเทียบ embeddings
-      double similarity = await compareFaceEmbeddings(capturedEmbedding, storedEmbedding);
-      
-      // ถ้าความคล้ายคลึงสูงกว่าค่า threshold ถือว่าเป็นคนเดียวกัน
-      return similarity > threshold;
-    } catch (e) {
-      print('Error verifying face: $e');
-      return false;
-    }
+  try {
+    // ดึง embedding ที่บันทึกไว้ในฐานข้อมูล
+    final response = await _supabase
+        .from('student_face_embeddings')
+        .select('face_embedding_json')  // เปลี่ยนมาใช้แค่ face_embedding_json
+        .eq('student_id', studentId)
+        .eq('is_active', true)
+        .single();
+    
+    if (response == null || response['face_embedding_json'] == null) return false;
+    
+    // แปลง JSON เป็น List<double>
+    final List<dynamic> jsonList = jsonDecode(response['face_embedding_json']);
+    final List<double> storedEmbedding = jsonList.map((item) => item as double).toList();
+    
+    if (storedEmbedding.isEmpty) return false;
+    
+    // เปรียบเทียบ embeddings
+    double similarity = await compareFaceEmbeddings(capturedEmbedding, storedEmbedding);
+    
+    // ถ้าความคล้ายคลึงสูงกว่าค่า threshold ถือว่าเป็นคนเดียวกัน
+    return similarity > threshold;
+  } catch (e) {
+    print('Error verifying face: $e');
+    return false;
   }
+}
 
   /// Get face embedding for a student from database
   Future<List<double>?> getStoredFaceEmbedding(String studentId) async {

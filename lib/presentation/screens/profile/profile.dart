@@ -277,17 +277,21 @@ class _ProfileState extends State<Profile> {
     }
   }
 
-  Future<Map<String, dynamic>?> _getFaceEmbeddingDetails() async {
+  // แก้ไขฟังก์ชันใน profile.dart
+
+Future<Map<String, dynamic>?> _getFaceEmbeddingDetails() async {
   try {
-    final email = _authService.getCurrentUserEmail();
-    if (email == null) return null;
+    final userProfile = await _authService.getUserProfile();
+    if (userProfile == null) return null;
+    
+    final schoolId = userProfile['school_id'];
+    if (schoolId == null || schoolId.isEmpty) return null;
     
     try {
-      // เข้าถึง Supabase.instance.client แทน _authService._supabase
       final response = await Supabase.instance.client
           .from('student_face_embeddings')
           .select('id, face_quality, created_at, updated_at')
-          .eq('student_id', email)  // ใช้ email เป็น student_id ชั่วคราว
+          .eq('student_id', schoolId)  // ใช้ school_id
           .eq('is_active', true)
           .single();
       
@@ -299,6 +303,43 @@ class _ProfileState extends State<Profile> {
   } catch (e) {
     print('Error in _getFaceEmbeddingDetails: $e');
     return null;
+  }
+}
+
+Future<void> _deactivateFaceEmbedding() async {
+  try {
+    final userProfile = await _authService.getUserProfile();
+    if (userProfile == null) return;
+    
+    final schoolId = userProfile['school_id'];
+    if (schoolId == null || schoolId.isEmpty) return;
+
+    await Supabase.instance.client
+        .from('student_face_embeddings')
+        .update({
+          'is_active': false,
+          'updated_at': DateTime.now().toIso8601String()
+        })
+        .eq('student_id', schoolId);  // ใช้ school_id
+    
+    setState(() {});
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('ลบข้อมูลใบหน้าเรียบร้อยแล้ว'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    }
+  } catch (e) {
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('เกิดข้อผิดพลาดในการลบข้อมูลใบหน้า: ${e.toString()}'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 }
 
@@ -479,41 +520,6 @@ class _ProfileState extends State<Profile> {
       ),
     );
   }
-
-  Future<void> _deactivateFaceEmbedding() async {
-  try {
-    final email = _authService.getCurrentUserEmail();
-    if (email == null) return;
-    
-    // เข้าถึง Supabase โดยตรง
-    await Supabase.instance.client
-        .from('student_face_embeddings')
-        .update({
-          'is_active': false,
-          'updated_at': DateTime.now().toIso8601String()
-        })
-        .eq('student_id', email);  // ใช้ email เป็น student_id ชั่วคราว
-    
-    setState(() {});
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('ลบข้อมูลใบหน้าเรียบร้อยแล้ว'),
-          backgroundColor: Colors.green,
-        ),
-      );
-    }
-  } catch (e) {
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('เกิดข้อผิดพลาดในการลบข้อมูลใบหน้า: ${e.toString()}'),
-          backgroundColor: Colors.red,
-        ),
-      );
-    }
-  }
-}
 
   void _toggleFavorite(int index) {
     setState(() {

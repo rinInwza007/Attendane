@@ -48,99 +48,114 @@ class _InputDataPageState extends State<InputDataPage> {
   }
 
   Future<void> _saveUserProfile() async {
-    if (!_formKey.currentState!.validate()) {
-      return;
+  if (!_formKey.currentState!.validate()) {
+    return;
+  }
+
+  setState(() => _isLoading = true);
+
+  try {
+    print('Saving user profile...'); // Debug log
+    
+    // บันทึกข้อมูลผู้ใช้ก่อน
+    await _authService.saveUserProfile(
+      fullName: _fullNameController.text.trim(),
+      schoolId: _schoolIdController.text.trim(),
+      userType: _selectedRole,
+    );
+
+    print('User profile saved successfully'); // Debug log
+
+    // ตรวจสอบว่าข้อมูลบันทึกสำเร็จ
+    final savedProfile = await _authService.getUserProfile();
+    if (savedProfile == null) {
+      throw Exception('Failed to save user profile');
     }
 
-    setState(() => _isLoading = true);
+    print('Saved profile: $savedProfile'); // Debug log
 
-    try {
-      // บันทึกข้อมูลผู้ใช้
-      await _authService.saveUserProfile(
-        fullName: _fullNameController.text.trim(),
-        schoolId: _schoolIdController.text.trim(),
-        userType: _selectedRole,
-      );
+    // ถ้าเป็นนักเรียน ต้องถ่ายรูปก่อน
+    if (_selectedRole == 'student') {
+      print('User is student, checking face data...'); // Debug log
+      
+      final hasFace = await _authService.hasFaceEmbedding();
+      if (!hasFace && mounted) {
+        print('No face data found, starting face capture...'); // Debug log
+        
+        bool faceProcessed = false;
+        while (!faceProcessed && mounted) {
+          try {
+            await _handleFaceCapture();
+            // ตรวจสอบอีกครั้งว่ามีข้อมูลใบหน้าแล้ว
+            faceProcessed = await _authService.hasFaceEmbedding();
 
-      // ถ้าเป็นนักเรียน ต้องถ่ายรูปก่อน
-      if (_selectedRole == 'student') {
-        final hasFace = await _authService.hasFaceEmbedding();
-        if (!hasFace && mounted) {
-          bool faceProcessed = false;
-          while (!faceProcessed && mounted) {
-            try {
-              await _handleFaceCapture();
-              // ตรวจสอบอีกครั้งว่ามีข้อมูลใบหน้าแล้ว
-              faceProcessed = await _authService.hasFaceEmbedding();
-
-              if (!faceProcessed) {
-                // ถ้ายังไม่มีข้อมูลใบหน้า แสดงข้อความและให้ลองใหม่
-                if (mounted) {
-                  final retry = await showDialog<bool>(
-                    context: context,
-                    barrierDismissible: false,
-                    builder: (context) => AlertDialog(
-                      title: const Text('ข้อมูลใบหน้าไม่สมบูรณ์'),
-                      content:
-                          const Text('กรุณาถ่ายภาพใบหน้าเพื่อใช้ในการเช็คชื่อ'),
-                      actions: [
-                        TextButton(
-                          onPressed: () => Navigator.of(context).pop(true),
-                          child: const Text('ลองใหม่'),
-                        ),
-                      ],
-                    ),
-                  );
-                  if (retry != true) break;
-                }
-              }
-            } catch (e) {
+            if (!faceProcessed) {
               if (mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text('เกิดข้อผิดพลาด: ${e.toString()}'),
-                    backgroundColor: Colors.red,
+                final retry = await showDialog<bool>(
+                  context: context,
+                  barrierDismissible: false,
+                  builder: (context) => AlertDialog(
+                    title: const Text('ข้อมูลใบหน้าไม่สมบูรณ์'),
+                    content: const Text('กรุณาถ่ายภาพใบหน้าเพื่อใช้ในการเช็คชื่อ'),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.of(context).pop(true),
+                        child: const Text('ลองใหม่'),
+                      ),
+                    ],
                   ),
                 );
+                if (retry != true) break;
               }
             }
-          }
-
-          // ตรวจสอบอีกครั้งก่อนไปหน้า Profile
-          final finalCheck = await _authService.hasFaceEmbedding();
-          if (!finalCheck) {
-            throw Exception(
-                'ไม่สามารถบันทึกข้อมูลใบหน้าได้ กรุณาลองใหม่อีกครั้ง');
+          } catch (e) {
+            print('Error in face capture: $e'); // Debug log
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('เกิดข้อผิดพลาด: ${e.toString()}'),
+                  backgroundColor: Colors.red,
+                ),
+              );
+            }
           }
         }
-      }
 
-      // เมื่อทุกอย่างเรียบร้อย นำทางไปยังหน้าที่เหมาะสม
-      if (mounted) {
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(
-            builder: (context) => _selectedRole == 'teacher'
-                ? const TeacherProfile()
-                : const Profile(),
-          ),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error: ${e.toString()}'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _isLoading = false);
+        // ตรวจสอบอีกครั้งก่อนไปหน้า Profile
+        final finalCheck = await _authService.hasFaceEmbedding();
+        if (!finalCheck) {
+          throw Exception('ไม่สามารถบันทึกข้อมูลใบหน้าได้ กรุณาลองใหม่อีกครั้ง');
+        }
       }
     }
+
+    // เมื่อทุกอย่างเรียบร้อย นำทางไปยังหน้าที่เหมาะสม
+    if (mounted) {
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (context) => _selectedRole == 'teacher'
+              ? const TeacherProfile()
+              : const Profile(),
+        ),
+      );
+    }
+  } catch (e) {
+    print('Error in _saveUserProfile: $e'); // Debug log
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error: ${e.toString()}'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  } finally {
+    if (mounted) {
+      setState(() => _isLoading = false);
+    }
   }
+}
 
   Future<void> _handleFaceCapture() async {
   try {

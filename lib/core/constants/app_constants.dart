@@ -4,7 +4,7 @@ class AppConstants {
 
   // Shared Preferences Keys
   static const String tokenKey = 'auth_token';
-  static const String userIdKey = 'user_id';
+  static const String userIdKey = 'student_id';
   static const String userEmailKey = 'user_email';
 
   // Default Values

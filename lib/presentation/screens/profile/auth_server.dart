@@ -315,7 +315,7 @@ class AuthServer {
       final response = await _supabase
           .from('student_face_embeddings')
           .select()
-          .eq('user_id', email)
+          .eq('student_id', email)
           .single();
       return response != null;
     } catch (e) {
@@ -329,8 +329,8 @@ class AuthServer {
     if (email == null) throw Exception('No authenticated user');
 
     await _supabase.from('student_face_embeddings').upsert({
-      'user_id': email,
-      'embedding': embedding,
+      'student_id': email,
+      'face_embedding': embedding,
       'is_active': true,
     });
   }
