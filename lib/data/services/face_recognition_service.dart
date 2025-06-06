@@ -1,5 +1,4 @@
 import 'dart:io';
-import 'dart:typed_data';
 import 'dart:convert';
 import 'package:flutter/services.dart';
 import 'package:google_ml_kit/google_ml_kit.dart';
@@ -77,7 +76,7 @@ class FaceRecognitionService extends BaseService {
           final buffer = modelData.buffer;
           final byteData = buffer.asUint8List();
           
-          _interpreter = await Interpreter.fromBuffer(
+          _interpreter = Interpreter.fromBuffer(
             byteData,
             options: InterpreterOptions()..threads = 4,
           );
@@ -205,25 +204,26 @@ class FaceRecognitionService extends BaseService {
     return features.map((x) => x / magnitude).toList();
   }
 
-  List<List<List<List<double>>>> _preprocessImage(img.Image image) {
-    return List.generate(
-      1,
-      (index) => List.generate(
+ List<List<List<List<double>>>> _preprocessImage(img.Image image) {
+  return List.generate(
+    1,
+    (index) => List.generate(
+      MODEL_INPUT_SIZE,
+      (y) => List.generate(
         MODEL_INPUT_SIZE,
-        (y) => List.generate(
-          MODEL_INPUT_SIZE,
-          (x) => List.generate(3, (c) {
-            final pixel = image.getPixel(x, y);
-            final value = c == 0
-                ? img.getRed(pixel)
-                : (c == 1 ? img.getGreen(pixel) : img.getBlue(pixel));
-            // Normalize pixel values to [-1, 1]
-            return value / 127.5 - 1.0;
-          }),
-        ),
+        (x) => List.generate(3, (c) {
+          final pixel = image.getPixel(x, y);
+          // ใช้ property ของ Pixel object สำหรับ image package v4.x
+          final value = c == 0
+              ? pixel.r  // Red channel
+              : (c == 1 ? pixel.g : pixel.b);  // Green และ Blue channels
+          // Normalize pixel values to [-1, 1]
+          return value / 127.5 - 1.0;
+        }),
       ),
-    );
-  }
+    ),
+  );
+}
 
   double _calculateMagnitude(List<double> vector) {
     double sumOfSquares = 0.0;
@@ -290,7 +290,7 @@ class FaceRecognitionService extends BaseService {
         .eq('is_active', true)
         .single();
     
-    if (response == null || response['face_embedding_json'] == null) return false;
+    if (response['face_embedding_json'] == null) return false;
     
     // แปลง JSON เป็น List<double>
     final List<dynamic> jsonList = jsonDecode(response['face_embedding_json']);
@@ -318,8 +318,6 @@ class FaceRecognitionService extends BaseService {
           .eq('student_id', studentId)
           .eq('is_active', true)
           .single();
-      
-      if (response == null) return null;
       
       // Try face_embedding first
       if (response['face_embedding'] != null) {

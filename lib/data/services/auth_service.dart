@@ -111,7 +111,7 @@ class AuthServer {
 
       return {
         'exists': response != null,
-        'userType': response?['user_type'],
+        'userType': response['user_type'],
       };
     } catch (e) {
       return {'exists': false, 'userType': null};
@@ -400,8 +400,6 @@ Future<void> ensureUserProfileExists() async {
           .eq('is_active', true)
           .single();
       
-      if (response == null) return null;
-      
       if (response['face_embedding'] != null) {
         return List<double>.from(response['face_embedding']);
       }
@@ -460,8 +458,6 @@ Future<void> ensureUserProfileExists() async {
           .eq('student_id', studentId)
           .eq('is_active', true)
           .single();
-      
-      if (response == null) return false;
       
       List<double>? storedEmbedding;
       

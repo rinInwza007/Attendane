@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:math' as math;
 import 'package:google_ml_kit/google_ml_kit.dart';
 import 'package:image/image.dart' as img;
 import 'package:tflite_flutter/tflite_flutter.dart';
@@ -88,7 +89,7 @@ class FaceRecognitionService {
       // Normalize embedding vector
       final embedding = outputArray[0];
       final magnitude =
-          sqrt(embedding.map((x) => x * x).reduce((a, b) => a + b));
+          math.sqrt(embedding.map((x) => x * x).reduce((a, b) => a + b));
       return embedding.map((x) => x / magnitude).toList();
     } catch (e) {
       if (e is FaceRecognitionException) {
@@ -107,10 +108,10 @@ class FaceRecognitionService {
           MODEL_INPUT_SIZE,
           (x) => List.generate(3, (c) {
             final pixel = image.getPixel(x, y);
-            // ใช้ getRed(), getGreen(), getBlue() สำหรับ image package
+            // ใช้วิธีใหม่สำหรับ image package เวอร์ชัน 4.x
             final value = c == 0
-                ? img.getRed(pixel)
-                : (c == 1 ? img.getGreen(pixel) : img.getBlue(pixel));
+                ? pixel.r
+                : (c == 1 ? pixel.g : pixel.b);
             // Normalize pixel values to [-1, 1]
             return value / 127.5 - 1.0;
           }),
@@ -123,12 +124,4 @@ class FaceRecognitionService {
     _interpreter?.close();
     await _faceDetector.close();
   }
-}
-
-double sqrt(double x) {
-  double z = x;
-  for (int i = 0; i < 10; i++) {
-    z = (z + x / z) / 2;
-  }
-  return z;
 }
