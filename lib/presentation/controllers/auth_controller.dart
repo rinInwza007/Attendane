@@ -1,10 +1,10 @@
 import 'package:get/get.dart';
-import '../../data/models/user_model.dart';
-import '../../presentation/screens/profile/auth_server.dart'; // แก้ import
+import 'package:myproject2/data/services/auth_service.dart';
+import '../../data/models/user_model.dart';// แก้ import
 
 class AuthController extends GetxController {
   // เปลี่ยนจาก AuthService เป็น AuthServer
-  final AuthServer _authService = AuthServer();
+  final AuthService _authService = AuthService();
 
   final Rx<UserModel?> _currentUser = Rx<UserModel?>(null);
   final RxBool _isAuthenticated = false.obs;
@@ -70,7 +70,7 @@ class AuthController extends GetxController {
 
     try {
       // แก้ไขชื่อเมธอดให้ตรงกับที่มีใน AuthServer
-      await _authService.siginWithEmailPassword(email, password);
+      await _authService.signInWithEmailPassword(email, password);
       await loadUserProfile();
       return true;
     } catch (e) {
@@ -87,7 +87,7 @@ class AuthController extends GetxController {
 
     try {
       // แก้ไขชื่อเมธอดให้ตรงกับที่มีใน AuthServer
-      await _authService.sigUpWithEmailPassword(email, password);
+      await _authService.signUpWithEmailPassword(email, password);
       return true;
     } catch (e) {
       _errorMessage.value = e.toString();

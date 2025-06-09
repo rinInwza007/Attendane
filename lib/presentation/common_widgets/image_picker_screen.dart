@@ -11,10 +11,10 @@ class ImagePickerScreen extends StatefulWidget {
   final String? instructionText;
 
   const ImagePickerScreen({
-    Key? key,
+    super.key,
     this.onImageCaptured,
     this.instructionText,
-  }) : super(key: key);
+  });
 
   @override
   ImagePickerScreenState createState() => ImagePickerScreenState();

@@ -1,9 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:myproject2/data/services/auth_service.dart';
 import 'package:myproject2/data/services/face_recognition_service.dart';
 import 'package:myproject2/presentation/common_widgets/image_picker_screen.dart';
-import 'package:myproject2/presentation/screens/profile/auth_server.dart';
 import 'package:myproject2/presentation/screens/settings/setting.dart';
-import 'dart:convert';
 
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -15,7 +14,7 @@ class Profile extends StatefulWidget {
 }
 
 class _ProfileState extends State<Profile> {
-  final AuthServer _authService = AuthServer();
+  final AuthService _authService = AuthService();
   int _selectedTabIndex = 0;
   bool _isLoading = false;
   final TextEditingController _classCodeController = TextEditingController();

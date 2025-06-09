@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:myproject2/presentation/screens/profile/auth_server.dart';
+import 'package:myproject2/data/services/auth_service.dart';
 import 'package:myproject2/presentation/screens/profile/login_screen.dart';
 
 class Setting extends StatefulWidget {
@@ -10,7 +10,7 @@ class Setting extends StatefulWidget {
 }
 
 class _SettingState extends State<Setting> {
-  final AuthServer _authService = AuthServer();
+  final AuthService _authService = AuthService();
   bool _isLoading = false;
 
   Future<void> _handleLogout() async {

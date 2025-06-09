@@ -1,21 +1,22 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import '../profile/auth_server.dart';
+import 'package:myproject2/data/services/auth_service.dart';
+
 
 class ClassDetailPage extends StatefulWidget {
   final String classId;
 
   const ClassDetailPage({
-    Key? key,
+    super.key,
     required this.classId,
-  }) : super(key: key);
+  });
 
   @override
   State<ClassDetailPage> createState() => _ClassDetailPageState();
 }
 
 class _ClassDetailPageState extends State<ClassDetailPage> {
-  final AuthServer _authService = AuthServer();
+  final AuthService _authService = AuthService();
   bool _isLoading = true;
   Map<String, dynamic>? _classData;
   List<Map<String, dynamic>> _students = [];

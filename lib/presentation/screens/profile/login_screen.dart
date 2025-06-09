@@ -8,10 +8,10 @@ import '../../common_widgets/app_button.dart';
 import '../../common_widgets/app_text_field.dart';
 import '../../common_widgets/loading_overlay.dart';
 import '../../common_widgets/error_dialog.dart';
-import '../../../core/service_locator.dart';
+
 
 class LoginScreen extends StatefulWidget {
-  const LoginScreen({Key? key}) : super(key: key);
+  const LoginScreen({super.key});
 
   @override
   State<LoginScreen> createState() => _LoginScreenState();
@@ -23,7 +23,7 @@ class _LoginScreenState extends State<LoginScreen> {
   final _passwordController = TextEditingController();
   bool _isLoading = false;
   bool _isPasswordVisible = false;
-  final _authService = AuthServer(); 
+  final _authService = AuthService(); 
 
   @override
   void dispose() {
@@ -38,7 +38,7 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() => _isLoading = true);
 
     try {
-      await _authService.siginWithEmailPassword(
+      await _authService.signInWithEmailPassword(
   _emailController.text.trim(),
   _passwordController.text,
 );

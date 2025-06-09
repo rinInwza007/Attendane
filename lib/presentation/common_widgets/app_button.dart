@@ -13,7 +13,7 @@ class AppButton extends StatelessWidget {
   final BorderRadius? borderRadius;
 
   const AppButton({
-    Key? key,
+    super.key,
     required this.text,
     required this.onPressed,
     this.isLoading = false,
@@ -24,7 +24,7 @@ class AppButton extends StatelessWidget {
     this.fullWidth = true,
     this.padding = const EdgeInsets.symmetric(horizontal: 16),
     this.borderRadius,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {
