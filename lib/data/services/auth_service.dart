@@ -1,17 +1,17 @@
-// แก้ไขทั้งหมดใน auth_server.dart เพื่อให้ตรงกับ DB Schema
+// lib/data/services/auth_service.dart
 
 import 'dart:math';
 import 'dart:convert';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-class AuthServer {
+class AuthService {
   final SupabaseClient _supabase = Supabase.instance.client;
 
   // เพิ่มเพื่อให้เข้าถึง _supabase ได้จากภายนอก
   SupabaseClient get supabase => _supabase;
 
-  // Authentication functions (เหมือนเดิม)
-  Future<AuthResponse> siginWithEmailPassword(String email, String password) async {
+  // Authentication functions
+  Future<AuthResponse> signInWithEmailPassword(String email, String password) async {
     try {
       return await _supabase.auth.signInWithPassword(password: password, email: email);
     } catch (e) {
@@ -20,7 +20,7 @@ class AuthServer {
     }
   }
 
-  Future<AuthResponse> sigUpWithEmailPassword(String email, String password) async {
+  Future<AuthResponse> signUpWithEmailPassword(String email, String password) async {
     try {
       return await _supabase.auth.signUp(password: password, email: email);
     } catch (e) {
@@ -48,40 +48,40 @@ class AuthServer {
 
   // User profile functions
   Future<Map<String, dynamic>?> getUserProfile() async {
-  final email = getCurrentUserEmail();
-  if (email == null) {
-    print('🔍 getUserProfile: No current user email');
-    return null;
-  }
-
-  print('🔍 getUserProfile: Getting profile for $email');
-
-  try {
-    final response = await _supabase
-        .from('users')
-        .select('*')
-        .eq('email', email)
-        .maybeSingle();
-    
-    print('🔍 getUserProfile: Raw response: $response');
-    
-    if (response == null) {
-      print('❌ getUserProfile: No user found');
+    final email = getCurrentUserEmail();
+    if (email == null) {
+      print('🔍 getUserProfile: No current user email');
       return null;
     }
-    
-    // เพิ่มข้อมูล has_face_data
-    final hasFace = await hasFaceEmbedding();
-    final userData = {...response, 'has_face_data': hasFace};
-    
-    print('✅ getUserProfile: Final data: $userData');
-    return userData;
-    
-  } catch (e) {
-    print('❌ getUserProfile error: $e');
-    return null;
+
+    print('🔍 getUserProfile: Getting profile for $email');
+
+    try {
+      final response = await _supabase
+          .from('users')
+          .select('*')
+          .eq('email', email)
+          .maybeSingle();
+      
+      print('🔍 getUserProfile: Raw response: $response');
+      
+      if (response == null) {
+        print('❌ getUserProfile: No user found');
+        return null;
+      }
+      
+      // เพิ่มข้อมูล has_face_data
+      final hasFace = await hasFaceEmbedding();
+      final userData = {...response, 'has_face_data': hasFace};
+      
+      print('✅ getUserProfile: Final data: $userData');
+      return userData;
+      
+    } catch (e) {
+      print('❌ getUserProfile error: $e');
+      return null;
+    }
   }
-}
 
   Future<bool> checkUserProfileExists() async {
     final email = getCurrentUserEmail();
@@ -119,237 +119,248 @@ class AuthServer {
   }
 
   Future<void> saveUserProfile({
-  required String fullName,
-  required String schoolId,
-  required String userType,
-}) async {
-  final email = getCurrentUserEmail();
-  if (email == null) throw Exception('No authenticated user');
-
-  print('Saving user profile - Email: $email, SchoolId: $schoolId');
-
-  try {
-    final response = await _supabase.from('users').upsert({
-      'email': email,
-      'full_name': fullName,
-      'school_id': schoolId,
-      'user_type': userType,
-      'is_active': true,
-    }, onConflict: 'email');
-
-    print('User profile saved successfully');
-    
-    // ตรวจสอบว่าข้อมูลถูกบันทึกจริง
-    final savedData = await _supabase
-        .from('users')
-        .select('*')
-        .eq('email', email)
-        .maybeSingle();
-    
-    print('Verified saved data: $savedData');
-    
-  } catch (e) {
-    print('Error saving user profile: $e');
-    throw Exception('Failed to save user profile: $e');
-  }
-}
-
-  // Face recognition functions - แก้ไขให้ตรงกับ DB Schema
-  Future<bool> hasFaceEmbedding() async {
-  try {
-    final userProfile = await getUserProfile();
-    if (userProfile == null) return false;
-    
-    // ใช้ข้อมูลจาก view
-    return userProfile['has_face_data'] ?? false;
-  } catch (e) {
-    print('Error checking face embedding: $e');
-    return false;
-  }
-}
-
-  Future<void> saveFaceEmbedding(List<double> embedding) async {
-  try {
+    required String fullName,
+    required String schoolId,
+    required String userType,
+  }) async {
     final email = getCurrentUserEmail();
-    if (email == null) {
-      throw Exception('No authenticated user');
-    }
+    if (email == null) throw Exception('No authenticated user');
 
-    print('🔍 Step 1: Current user email: $email');
+    print('Saving user profile - Email: $email, SchoolId: $schoolId');
 
-    // ดึงข้อมูล user จาก database
-    final userResponse = await _supabase
-        .from('users')
-        .select('email, school_id, full_name, user_type')
-        .eq('email', email)
-        .maybeSingle();
-
-    if (userResponse == null) {
-      throw Exception('User not found in database: $email');
-    }
-
-    print('📋 Step 2: User data from DB: $userResponse');
-
-    final schoolId = userResponse['school_id'];
-    if (schoolId == null || schoolId.toString().isEmpty) {
-      throw Exception('School ID is null or empty for user: $email');
-    }
-
-    final schoolIdString = schoolId.toString();
-    print('🎓 Step 3: Using school_id: "$schoolIdString" (type: ${schoolId.runtimeType})');
-
-    // ตรวจสอบว่า school_id นี้มีอยู่จริงในฐานข้อมูล
-    final schoolIdCheck = await _supabase
-        .from('users')
-        .select('school_id')
-        .eq('school_id', schoolIdString)
-        .maybeSingle();
-
-    if (schoolIdCheck == null) {
-      print('❌ School ID verification failed');
-      print('Available school_ids in database:');
-      
-      // แสดงรายการ school_id ที่มีอยู่
-      final allUsers = await _supabase
-          .from('users')
-          .select('email, school_id');
-      
-      for (var user in allUsers) {
-        print('  - ${user['email']}: "${user['school_id']}" (${user['school_id'].runtimeType})');
-      }
-      
-      throw Exception('School ID "$schoolIdString" not found in users table');
-    }
-
-    print('✅ Step 4: School ID verified in database');
-
-    // ตรวจสอบข้อมูลเดิมใน student_face_embeddings
-    final existing = await _supabase
-        .from('student_face_embeddings')
-        .select('id, student_id, is_active')
-        .eq('student_id', schoolIdString)
-        .maybeSingle();
-
-    print('📋 Step 5: Existing face data check: $existing');
-
-    final embeddingJson = jsonEncode(embedding);
-    final quality = 0.95;
-
-    if (existing != null) {
-      print('📝 Step 6: Updating existing record...');
-      
-      final updateData = {
-        'face_embedding_json': embeddingJson,
-        'face_quality': quality,
+    try {
+      final response = await _supabase.from('users').upsert({
+        'email': email,
+        'full_name': fullName,
+        'school_id': schoolId,
+        'user_type': userType,
         'is_active': true,
-      };
+      }, onConflict: 'email');
 
-      print('📤 Update data: $updateData');
-
-      await _supabase.from('student_face_embeddings')
-          .update(updateData)
-          .eq('student_id', schoolIdString);
+      print('User profile saved successfully');
       
-      print('✅ Successfully updated face embedding');
-    } else {
-      print('➕ Step 6: Inserting new record...');
+      // ตรวจสอบว่าข้อมูลถูกบันทึกจริง
+      final savedData = await _supabase
+          .from('users')
+          .select('*')
+          .eq('email', email)
+          .maybeSingle();
       
-      final insertData = {
-        'student_id': schoolIdString,
-        'face_embedding_json': embeddingJson,
-        'face_quality': quality,
-        'is_active': true
-      };
-
-      print('📤 Insert data: $insertData');
-      print('📤 student_id type: ${schoolIdString.runtimeType}');
-      print('📤 student_id value: "$schoolIdString"');
-
-      await _supabase.from('student_face_embeddings').insert(insertData);
+      print('Verified saved data: $savedData');
       
-      print('✅ Successfully inserted face embedding');
+    } catch (e) {
+      print('Error saving user profile: $e');
+      throw Exception('Failed to save user profile: $e');
     }
+  }
 
-    // ตรวจสอบผลลัพธ์สุดท้าย
-    final finalCheck = await _supabase
-        .from('student_face_embeddings')
-        .select('id, student_id, face_quality, is_active, created_at')
-        .eq('student_id', schoolIdString)
-        .eq('is_active', true)
-        .maybeSingle();
+  Future<String?> getUserType() async {
+    final email = getCurrentUserEmail();
+    if (email == null) return null;
 
-    print('🎯 Final verification: $finalCheck');
-    
-  } catch (e) {
-    print('❌ ERROR in saveFaceEmbedding: $e');
-    print('❌ Error type: ${e.runtimeType}');
-    
-    // แสดงข้อมูล debug เพิ่มเติม
+    try {
+      final response = await _supabase
+          .from('users')
+          .select('user_type')
+          .eq('email', email)
+          .single();
+      return response?['user_type'];
+    } catch (e) {
+      return null;
+    }
+  }
+
+  // Face recognition functions - แก้ไขให้ใช้ school_id
+  Future<bool> hasFaceEmbedding() async {
     try {
       final email = getCurrentUserEmail();
-      print('🔍 Debug - Current email: $email');
+      if (email == null) return false;
+
+      // ดึง school_id จาก users table
+      final userResponse = await _supabase
+          .from('users')
+          .select('school_id')
+          .eq('email', email)
+          .maybeSingle();
+
+      if (userResponse == null) return false;
       
-      if (email != null) {
-        final debugUser = await _supabase
-            .from('users')
-            .select('*')
-            .eq('email', email)
-            .maybeSingle();
-        print('🔍 Debug - User data: $debugUser');
+      final schoolId = userResponse['school_id'];
+      if (schoolId == null || schoolId.toString().isEmpty) return false;
+
+      // ตรวจสอบใน student_face_embeddings table โดยใช้ school_id
+      final response = await _supabase
+          .from('student_face_embeddings')
+          .select('id')
+          .eq('student_id', schoolId.toString())
+          .eq('is_active', true)
+          .maybeSingle();
+
+      return response != null;
+    } catch (e) {
+      print('Error checking face embedding: $e');
+      return false;
+    }
+  }
+
+  Future<void> saveFaceEmbedding(List<double> embedding) async {
+    try {
+      final email = getCurrentUserEmail();
+      if (email == null) {
+        throw Exception('No authenticated user');
       }
-    } catch (debugError) {
-      print('❌ Debug error: $debugError');
-    }
-    
-    throw Exception('ไม่สามารถบันทึกข้อมูลใบหน้าได้: $e');
-  }
-}
 
+      print('🔍 Step 1: Current user email: $email');
 
-Future<void> ensureUserProfileExists() async {
-  final email = getCurrentUserEmail();
-  if (email == null) return;
+      // ดึงข้อมูล user จาก database
+      final userResponse = await _supabase
+          .from('users')
+          .select('email, school_id, full_name, user_type')
+          .eq('email', email)
+          .maybeSingle();
 
-  try {
-    final existingUser = await _supabase
-        .from('users')
-        .select('email')
-        .eq('email', email)
-        .maybeSingle();
+      if (userResponse == null) {
+        throw Exception('User not found in database: $email');
+      }
 
-    if (existingUser == null) {
-      print('Creating missing user profile for: $email');
+      print('📋 Step 2: User data from DB: $userResponse');
+
+      final schoolId = userResponse['school_id'];
+      if (schoolId == null || schoolId.toString().isEmpty) {
+        throw Exception('School ID is null or empty for user: $email');
+      }
+
+      final schoolIdString = schoolId.toString();
+      print('🎓 Step 3: Using school_id: "$schoolIdString" (type: ${schoolId.runtimeType})');
+
+      // ตรวจสอบว่า school_id นี้มีอยู่จริงในฐานข้อมูล
+      final schoolIdCheck = await _supabase
+          .from('users')
+          .select('school_id')
+          .eq('school_id', schoolIdString)
+          .maybeSingle();
+
+      if (schoolIdCheck == null) {
+        print('❌ School ID verification failed');
+        throw Exception('School ID "$schoolIdString" not found in users table');
+      }
+
+      print('✅ Step 4: School ID verified in database');
+
+      // ตรวจสอบข้อมูลเดิมใน student_face_embeddings
+      final existing = await _supabase
+          .from('student_face_embeddings')
+          .select('id, student_id, is_active')
+          .eq('student_id', schoolIdString)
+          .maybeSingle();
+
+      print('📋 Step 5: Existing face data check: $existing');
+
+      final embeddingJson = jsonEncode(embedding);
+      final quality = 0.95;
+
+      if (existing != null) {
+        print('📝 Step 6: Updating existing record...');
+        
+        final updateData = {
+          'face_embedding_json': embeddingJson,
+          'face_quality': quality,
+          'is_active': true,
+        };
+
+        print('📤 Update data: $updateData');
+
+        await _supabase.from('student_face_embeddings')
+            .update(updateData)
+            .eq('student_id', schoolIdString);
+        
+        print('✅ Successfully updated face embedding');
+      } else {
+        print('➕ Step 6: Inserting new record...');
+        
+        final insertData = {
+          'student_id': schoolIdString,
+          'face_embedding_json': embeddingJson,
+          'face_quality': quality,
+          'is_active': true
+        };
+
+        print('📤 Insert data: $insertData');
+
+        await _supabase.from('student_face_embeddings').insert(insertData);
+        
+        print('✅ Successfully inserted face embedding');
+      }
+
+      // ตรวจสอบผลลัพธ์สุดท้าย
+      final finalCheck = await _supabase
+          .from('student_face_embeddings')
+          .select('id, student_id, face_quality, is_active, created_at')
+          .eq('student_id', schoolIdString)
+          .eq('is_active', true)
+          .maybeSingle();
+
+      print('🎯 Final verification: $finalCheck');
       
-      // สร้าง user profile พื้นฐาน
-      await _supabase.from('users').insert({
-        'email': email,
-        'full_name': 'User', // ค่า default
-        'school_id': email.split('@')[0], // ใช้ส่วนแรกของ email เป็น school_id ชั่วคราว
-        'user_type': 'student',
-        'is_active': true,
-      });
-      
-      print('User profile created successfully');
+    } catch (e) {
+      print('❌ ERROR in saveFaceEmbedding: $e');
+      throw Exception('ไม่สามารถบันทึกข้อมูลใบหน้าได้: $e');
     }
-  } catch (e) {
-    print('Error ensuring user profile: $e');
   }
-}
+
+  Future<void> ensureUserProfileExists() async {
+    final email = getCurrentUserEmail();
+    if (email == null) return;
+
+    try {
+      final existingUser = await _supabase
+          .from('users')
+          .select('email')
+          .eq('email', email)
+          .maybeSingle();
+
+      if (existingUser == null) {
+        print('Creating missing user profile for: $email');
+        
+        // สร้าง user profile พื้นฐาน
+        await _supabase.from('users').insert({
+          'email': email,
+          'full_name': 'User', // ค่า default
+          'school_id': email.split('@')[0], // ใช้ส่วนแรกของ email เป็น school_id ชั่วคราว
+          'user_type': 'student',
+          'is_active': true,
+        });
+        
+        print('User profile created successfully');
+      }
+    } catch (e) {
+      print('Error ensuring user profile: $e');
+    }
+  }
 
   Future<void> deactivateFaceEmbedding() async {
     try {
-      final userProfile = await getUserProfile();
-      if (userProfile == null) return;
+      final email = getCurrentUserEmail();
+      if (email == null) return;
+
+      // ดึง school_id จาก users table
+      final userResponse = await _supabase
+          .from('users')
+          .select('school_id')
+          .eq('email', email)
+          .maybeSingle();
+
+      if (userResponse == null) return;
       
-      final schoolId = userProfile['school_id'];
-      if (schoolId == null || schoolId.isEmpty) return;
+      final schoolId = userResponse['school_id'];
+      if (schoolId == null || schoolId.toString().isEmpty) return;
 
       await _supabase.from('student_face_embeddings')
           .update({
             'is_active': false,
             'updated_at': DateTime.now().toIso8601String()
           })
-          .eq('student_id', schoolId);
+          .eq('student_id', schoolId.toString());
       
       print('Deactivated face embedding for student: $schoolId');
     } catch (e) {
@@ -360,17 +371,26 @@ Future<void> ensureUserProfileExists() async {
 
   Future<Map<String, dynamic>?> getFaceEmbeddingDetails() async {
     try {
-      final userProfile = await getUserProfile();
-      if (userProfile == null) return null;
+      final email = getCurrentUserEmail();
+      if (email == null) return null;
+
+      // ดึง school_id จาก users table
+      final userResponse = await _supabase
+          .from('users')
+          .select('school_id')
+          .eq('email', email)
+          .maybeSingle();
+
+      if (userResponse == null) return null;
       
-      final schoolId = userProfile['school_id'];
-      if (schoolId == null || schoolId.isEmpty) return null;
+      final schoolId = userResponse['school_id'];
+      if (schoolId == null || schoolId.toString().isEmpty) return null;
 
       try {
         final response = await _supabase
             .from('student_face_embeddings')
             .select('id, face_quality, created_at, updated_at')
-            .eq('student_id', schoolId)
+            .eq('student_id', schoolId.toString())
             .eq('is_active', true)
             .single();
         
@@ -387,16 +407,25 @@ Future<void> ensureUserProfileExists() async {
 
   Future<List<double>?> getFaceEmbedding() async {
     try {
-      final userProfile = await getUserProfile();
-      if (userProfile == null) return null;
+      final email = getCurrentUserEmail();
+      if (email == null) return null;
+
+      // ดึง school_id จาก users table
+      final userResponse = await _supabase
+          .from('users')
+          .select('school_id')
+          .eq('email', email)
+          .maybeSingle();
+
+      if (userResponse == null) return null;
       
-      final schoolId = userProfile['school_id'];
-      if (schoolId == null || schoolId.isEmpty) return null;
+      final schoolId = userResponse['school_id'];
+      if (schoolId == null || schoolId.toString().isEmpty) return null;
 
       final response = await _supabase
           .from('student_face_embeddings')
           .select('face_embedding, face_embedding_json')
-          .eq('student_id', schoolId)
+          .eq('student_id', schoolId.toString())
           .eq('is_active', true)
           .single();
       
@@ -418,18 +447,27 @@ Future<void> ensureUserProfileExists() async {
 
   Future<void> updateFaceQuality(double quality) async {
     try {
-      final userProfile = await getUserProfile();
-      if (userProfile == null) return;
+      final email = getCurrentUserEmail();
+      if (email == null) return;
+
+      // ดึง school_id จาก users table
+      final userResponse = await _supabase
+          .from('users')
+          .select('school_id')
+          .eq('email', email)
+          .maybeSingle();
+
+      if (userResponse == null) return;
       
-      final schoolId = userProfile['school_id'];
-      if (schoolId == null || schoolId.isEmpty) return;
+      final schoolId = userResponse['school_id'];
+      if (schoolId == null || schoolId.toString().isEmpty) return;
 
       await _supabase.from('student_face_embeddings')
           .update({
             'face_quality': quality,
             'updated_at': DateTime.now().toIso8601String()
           })
-          .eq('student_id', schoolId);
+          .eq('student_id', schoolId.toString());
     } catch (e) {
       print('Error updating face quality: $e');
     }
@@ -479,7 +517,7 @@ Future<void> ensureUserProfileExists() async {
     }
   }
 
-  // Class management functions (เหมือนเดิม)
+  // Class management functions
   String _generateInviteCode() {
     const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
     final random = Random();

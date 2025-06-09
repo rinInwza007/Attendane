@@ -1,11 +1,11 @@
 import 'package:get/get.dart';
+import 'package:myproject2/data/services/auth_service.dart';
 import '../../data/models/class_model.dart';
-import '../../presentation/screens/profile/auth_server.dart'; // แก้ import
-import '../../core/service_locator.dart';
+// แก้ import
 
 class ClassController extends GetxController {
   // เปลี่ยนจาก AuthService เป็น AuthServer
-  final AuthServer _authService = AuthServer();
+  final AuthService _authService =AuthService();
 
   final RxList<ClassModel> _teacherClasses = <ClassModel>[].obs;
   final RxList<ClassModel> _studentClasses = <ClassModel>[].obs;

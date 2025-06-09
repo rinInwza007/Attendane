@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:myproject2/presentation/screens/profile/auth_server.dart';
+import 'package:myproject2/data/services/auth_service.dart';
+
 
 class RegisterPage extends StatefulWidget {
   const RegisterPage({super.key});
@@ -10,7 +11,7 @@ class RegisterPage extends StatefulWidget {
 
 class _RegisterPageState extends State<RegisterPage> {
   final _formKey = GlobalKey<FormState>();
-  final _authService = AuthServer();
+  final _authService = AuthService();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
@@ -63,7 +64,7 @@ class _RegisterPageState extends State<RegisterPage> {
     setState(() => _isLoading = true);
 
     try {
-      await _authService.sigUpWithEmailPassword(
+      await _authService.signUpWithEmailPassword(
         _emailController.text.trim(),
         _passwordController.text,
       );

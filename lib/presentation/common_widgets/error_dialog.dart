@@ -7,12 +7,12 @@ class ErrorDialog extends StatelessWidget {
   final VoidCallback? onPressed;
 
   const ErrorDialog({
-    Key? key,
+    super.key,
     this.title = 'Error',
     required this.message,
     this.buttonText = 'OK',
     this.onPressed,
-  }) : super(key: key);
+  });
 
   static Future<void> show(
     BuildContext context, {

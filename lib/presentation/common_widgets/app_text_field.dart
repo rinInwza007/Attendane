@@ -16,7 +16,7 @@ class AppTextField extends StatelessWidget {
   final void Function(String)? onSubmitted;
 
   const AppTextField({
-    Key? key,
+    super.key,
     required this.controller,
     required this.label,
     this.hint,
@@ -30,7 +30,7 @@ class AppTextField extends StatelessWidget {
     this.textCapitalization = TextCapitalization.none,
     this.onChanged,
     this.onSubmitted,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {

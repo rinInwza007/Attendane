@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:myproject2/data/services/auth_service.dart';
 import 'package:myproject2/presentation/screens/class/class_detail.dart';
 import 'package:myproject2/presentation/screens/class/classedit.dart';
 import 'package:myproject2/presentation/screens/class/createclass.dart';
-import 'package:myproject2/presentation/screens/profile/auth_server.dart';
 import 'package:myproject2/presentation/screens/settings/setting.dart';
 
 class TeacherProfile extends StatefulWidget {
@@ -13,7 +13,7 @@ class TeacherProfile extends StatefulWidget {
 }
 
 class _TeacherProfileState extends State<TeacherProfile> {
-  final AuthServer _authService = AuthServer();
+  final AuthService _authService =AuthService();
   bool _isLoading = false;
   List<Map<String, dynamic>> _classes = [];
 

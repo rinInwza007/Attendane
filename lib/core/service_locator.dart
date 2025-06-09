@@ -9,7 +9,7 @@ final getIt = GetIt.instance;
 // In setupServiceLocator()
 void setupServiceLocator() {
   // Register services as singletons
-  getIt.registerLazySingleton<AuthServer>(() => AuthServer());
+  getIt.registerLazySingleton<AuthService>(() => AuthService());
   getIt.registerLazySingleton<FaceRecognitionService>(
       () => FaceRecognitionService());
 

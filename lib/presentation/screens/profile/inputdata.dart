@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:myproject2/data/services/auth_service.dart';
 import 'package:myproject2/data/services/face_recognition_service.dart';
 import 'package:myproject2/presentation/common_widgets/image_picker_screen.dart';
-import 'package:myproject2/presentation/screens/profile/auth_server.dart';
 import 'package:myproject2/presentation/screens/profile/profile.dart';
 import 'package:myproject2/presentation/screens/profile/profileteachaer.dart';
 
@@ -14,7 +14,7 @@ class InputDataPage extends StatefulWidget {
 
 class _InputDataPageState extends State<InputDataPage> {
   final _formKey = GlobalKey<FormState>();
-  final _authService = AuthServer();
+  final _authService = AuthService();
   final _fullNameController = TextEditingController();
   final _schoolIdController = TextEditingController();
   bool _isLoading = false;

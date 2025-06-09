@@ -9,14 +9,14 @@ class AppCard extends StatelessWidget {
   final BorderRadius? borderRadius;
 
   const AppCard({
-    Key? key,
+    super.key,
     required this.child,
     this.padding = const EdgeInsets.all(16),
     this.onTap,
     this.color,
     this.elevation = 2,
     this.borderRadius,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {

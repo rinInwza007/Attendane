@@ -1,13 +1,14 @@
 import 'package:flutter/material.dart';
-import 'package:myproject2/presentation/screens/profile/auth_server.dart';
+import 'package:myproject2/data/services/auth_service.dart';
+
 
 class CreateClassDialog extends StatefulWidget {
   final Function onClassCreated;
 
   const CreateClassDialog({
-    Key? key,
+    super.key,
     required this.onClassCreated,
-  }) : super(key: key);
+  });
 
   @override
   State<CreateClassDialog> createState() => _CreateClassDialogState();
@@ -38,7 +39,7 @@ class _CreateClassDialogState extends State<CreateClassDialog> {
     try {
       // เช็คว่ามี class_id นี้อยู่แล้วหรือไม่
       final existing =
-          await AuthServer().checkClassExists(_classIdController.text.trim());
+          await AuthService().checkClassExists(_classIdController.text.trim());
 
       if (existing) {
         if (mounted) {
@@ -53,7 +54,7 @@ class _CreateClassDialogState extends State<CreateClassDialog> {
         return;
       }
 
-      await AuthServer().createClass(
+      await AuthService().createClass(
         classId: _classIdController.text.trim(),
         className: _classNameController.text.trim(),
         schedule: _scheduleController.text.trim(),

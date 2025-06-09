@@ -1,16 +1,17 @@
 // สร้างไฟล์ใหม่ชื่อ edit_class_dialog.dart
 import 'package:flutter/material.dart';
-import 'package:myproject2/presentation/screens/profile/auth_server.dart';
+import 'package:myproject2/data/services/auth_service.dart';
+
 
 class EditClassDialog extends StatefulWidget {
   final Map<String, dynamic> classData;
   final Function onClassUpdated;
 
   const EditClassDialog({
-    Key? key,
+    super.key,
     required this.classData,
     required this.onClassUpdated,
-  }) : super(key: key);
+  });
 
   @override
   State<EditClassDialog> createState() => _EditClassDialogState();
@@ -47,7 +48,7 @@ class _EditClassDialogState extends State<EditClassDialog> {
     setState(() => _isLoading = true);
 
     try {
-      await AuthServer().updateClass(
+      await AuthService().updateClass(
         classId: widget.classData['class_id'],
         className: _classNameController.text.trim(),
         schedule: _scheduleController.text.trim(),
@@ -104,7 +105,7 @@ class _EditClassDialogState extends State<EditClassDialog> {
     setState(() => _isLoading = true);
 
     try {
-      await AuthServer().deleteClass(widget.classData['class_id']);
+      await AuthService().deleteClass(widget.classData['class_id']);
 
       if (mounted) {
         Navigator.pop(context);
