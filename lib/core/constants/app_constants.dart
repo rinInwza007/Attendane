@@ -34,5 +34,5 @@ class AppConstants {
 
   // Face Recognition
   static const int faceModelInputSize = 112;
-  static const int faceEmbeddingSize = 256;
+  static const int faceEmbeddingSize = 128;
 }

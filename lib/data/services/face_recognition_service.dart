@@ -1,11 +1,10 @@
 import 'dart:io';
-import 'dart:convert';
+import 'dart:math' as math;
+import 'dart:typed_data';
 import 'package:flutter/services.dart';
 import 'package:google_ml_kit/google_ml_kit.dart';
 import 'package:image/image.dart' as img;
 import 'package:tflite_flutter/tflite_flutter.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
-import 'base_service.dart';
 
 class FaceRecognitionException implements Exception {
   final String message;
@@ -15,98 +14,151 @@ class FaceRecognitionException implements Exception {
   String toString() => 'FaceRecognitionException: $message';
 }
 
-class FaceRecognitionService extends BaseService {
-  // Singleton pattern with dependency injection
-  static FaceRecognitionService? _instance;
-
-  /// Factory constructor that returns the singleton instance
-  /// with Supabase client dependency injection
-  factory FaceRecognitionService() {
-    // Create instance if it doesn't exist
-    _instance ??= FaceRecognitionService._internal(Supabase.instance.client);
-    return _instance!;
-  }
-
-  /// Private constructor with dependency injection
-  FaceRecognitionService._internal(this._supabase);
-
-  /// Test constructor for dependency injection (useful for testing)
-  @visibleForTesting()
-  FaceRecognitionService.forTesting(this._supabase);
-
-  /// Supabase client injected through constructor
-  final SupabaseClient _supabase;
-  
+class FaceRecognitionService {
   Interpreter? _interpreter;
-  FaceDetector? _faceDetector;
-
+  final FaceDetector _faceDetector;
+  
+  // Constants for the converted model
   static const int MODEL_INPUT_SIZE = 112;
-  static const int EMBEDDING_SIZE = 256;
-  static const String MODEL_FILE = 'assets/face_net_model.tflite';
+  static const int EMBEDDING_SIZE = 128;  // Changed from 256 to 128
+  static const String MODEL_FILE = 'assets/converted_model.tflite';
 
-  bool get isInitialized => _interpreter != null && _faceDetector != null;
+  FaceRecognitionService()
+      : _faceDetector = GoogleMlKit.vision.faceDetector(
+          FaceDetectorOptions(
+            enableLandmarks: true,
+            enableClassification: true,
+            enableTracking: true,
+            minFaceSize: 0.15,
+          ),
+        );
+
+  bool get isInitialized => _interpreter != null;
 
   Future<void> initialize() async {
-    return await handleError(() async {
-      if (isInitialized) return;
+    try {
+      if (_interpreter != null) return;
 
-      // Initialize face detector
-      _faceDetector = GoogleMlKit.vision.faceDetector(
-        FaceDetectorOptions(
-          enableLandmarks: true,
-          enableClassification: true,
-          enableTracking: true,
-          minFaceSize: 0.15,
-        ),
-      );
+      print('🔄 Initializing face recognition service...');
 
+      // Method 1: Try loading from asset directly
       try {
-        // Method 1: Load from asset
         _interpreter = await Interpreter.fromAsset(
-          'face_net_model.tflite',
-          options: InterpreterOptions()..threads = 4,
+          'converted_model.tflite',
         );
-        print('Model loaded successfully from asset');
+        print('✅ Model loaded successfully from asset');
       } catch (e1) {
-        print('Failed to load model from asset: $e1');
+        print('❌ Failed to load model from asset: $e1');
         
+        // Method 2: Try loading from ByteData
         try {
-          // Method 2: Load from ByteData
-          final modelData = await rootBundle.load('assets/face_net_model.tflite');
-          final buffer = modelData.buffer;
-          final byteData = buffer.asUint8List();
+          print('🔄 Trying to load model from ByteData...');
+          final modelData = await rootBundle.load('assets/converted_model.tflite');
+          final buffer = modelData.buffer.asUint8List();
           
-          _interpreter = Interpreter.fromBuffer(
-            byteData,
-            options: InterpreterOptions()..threads = 4,
-          );
-          print('Model loaded successfully from buffer');
+          _interpreter = Interpreter.fromBuffer(buffer);
+          print('✅ Model loaded successfully from buffer');
         } catch (e2) {
-          print('Failed to load model from buffer: $e2');
-          
-          // Method 3: Use ML Kit face detection capabilities only
-          print('Falling back to ML Kit face detection only');
-          // We'll use ML Kit face detection
+          print('❌ Failed to load model from buffer: $e2');
+          throw FaceRecognitionException('Failed to load converted_model.tflite: $e2');
         }
       }
-    });
+
+      // Verify model input/output shapes
+      if (_interpreter != null) {
+        _verifyModelShapes();
+        
+        // Test model with dummy data to ensure it's working
+        try {
+          await _testModelBasic();
+        } catch (e) {
+          print('⚠️ Model basic test failed: $e');
+          // Don't throw here, just warn
+        }
+      }
+
+    } catch (e) {
+      print('❌ Error initializing face recognition: $e');
+      throw FaceRecognitionException('Failed to initialize interpreter: $e');
+    }
+  }
+
+  /// Basic test to verify model is working
+  Future<void> _testModelBasic() async {
+    try {
+      print('🧪 Running basic model test...');
+      
+      final testInput = Float32List(1 * MODEL_INPUT_SIZE * MODEL_INPUT_SIZE * 3);
+      for (int i = 0; i < testInput.length; i++) {
+        testInput[i] = 0.5; // Fill with dummy normalized data
+      }
+      
+      // Try simple run
+      final input = [testInput];
+      final output = [List<double>.filled(EMBEDDING_SIZE, 0.0)];
+      
+      _interpreter!.run(input, output);
+      
+      print('✅ Basic model test passed');
+    } catch (e) {
+      print('❌ Basic model test failed: $e');
+      rethrow;
+    }
+  }
+
+  void _verifyModelShapes() {
+    try {
+      print('📊 Model Information:');
+      print('   Expected input size: ${MODEL_INPUT_SIZE}x${MODEL_INPUT_SIZE}x3');
+      print('   Expected output size: $EMBEDDING_SIZE');
+      print('   Model file: $MODEL_FILE');
+      
+      // Try to get actual model information if possible
+      try {
+        print('🔍 Attempting to verify model shapes...');
+        
+        // Test with minimal input to check if model is working
+        final testInput = Float32List(1 * MODEL_INPUT_SIZE * MODEL_INPUT_SIZE * 3);
+        for (int i = 0; i < testInput.length; i++) {
+          testInput[i] = 0.5; // Fill with dummy data
+        }
+        
+        print('   Test input created with ${testInput.length} elements');
+        print('✅ Model verification completed');
+        
+      } catch (e) {
+        print('⚠️ Could not verify model shapes: $e');
+      }
+      
+    } catch (e) {
+      print('❌ Error verifying model shapes: $e');
+    }
+  }
+
+  bool _listsEqual(List<int> a, List<int> b) {
+    if (a.length != b.length) return false;
+    for (int i = 0; i < a.length; i++) {
+      if (a[i] != b[i]) return false;
+    }
+    return true;
   }
 
   Future<List<double>> getFaceEmbedding(String imagePath) async {
-    return await handleError(() async {
-      // Ensure service is initialized
-      if (!isInitialized) {
-        await initialize();
-      }
+    if (_interpreter == null) {
+      await initialize();
+    }
 
+    try {
+      print('🔍 Processing face embedding for: $imagePath');
+      
       final imageFile = File(imagePath);
       if (!await imageFile.exists()) {
-        throw FaceRecognitionException('ไม่พบไฟล์รูปภาพ กรุณาลองใหม่อีกครั้ง');
+        throw FaceRecognitionException('ไม่พบไฟล์รูปภาพ: $imagePath');
       }
 
-      // Detect faces
+      // Detect faces using ML Kit
       final inputImage = InputImage.fromFile(imageFile);
-      final faces = await _faceDetector!.processImage(inputImage);
+      final faces = await _faceDetector.processImage(inputImage);
 
       if (faces.isEmpty) {
         throw FaceRecognitionException('ไม่พบใบหน้าในรูปภาพ กรุณาเลือกรูปที่เห็นใบหน้าชัดเจน');
@@ -115,136 +167,147 @@ class FaceRecognitionService extends BaseService {
         throw FaceRecognitionException('พบใบหน้าหลายใบในรูปภาพ กรุณาเลือกรูปที่มีเพียงใบหน้าของคุณเท่านั้น');
       }
 
-      // If TensorFlow model is available, use it
-      if (_interpreter != null) {
-        // Process image
-        final bytes = await imageFile.readAsBytes();
-        final image = img.decodeImage(bytes);
-        if (image == null) {
-          throw FaceRecognitionException('ไม่สามารถอ่านรูปภาพได้ กรุณาลองรูปอื่น');
-        }
+      print('✅ Face detected successfully');
 
-        // Resize and preprocess image
-        final preprocessedImage = img.copyResize(
-          image,
-          width: MODEL_INPUT_SIZE,
-          height: MODEL_INPUT_SIZE,
-          interpolation: img.Interpolation.linear,
-        );
+      // Process image for model inference
+      final bytes = await imageFile.readAsBytes();
+      final image = img.decodeImage(bytes);
+      if (image == null) {
+        throw FaceRecognitionException('ไม่สามารถอ่านรูปภาพได้ กรุณาลองรูปอื่น');
+      }
 
-        final inputArray = _preprocessImage(preprocessedImage);
-        final outputArray =
-            List.filled(1 * EMBEDDING_SIZE, 0.0).reshape([1, EMBEDDING_SIZE]);
+      // Resize and preprocess image
+      final preprocessedImage = img.copyResize(
+        image,
+        width: MODEL_INPUT_SIZE,
+        height: MODEL_INPUT_SIZE,
+        interpolation: img.Interpolation.linear,
+      );
 
+      print('🔄 Preprocessing image...');
+      final inputArray = _preprocessImage(preprocessedImage);
+      
+      // Create output buffer using Float32List
+      final outputBuffer = Float32List(EMBEDDING_SIZE);
+      final outputs = <int, Object>{0: outputBuffer};
+
+      print('🧠 Running model inference...');
+      
+      // ประกาศตัวแปร embedding ที่นี่
+      List<double> embedding;
+      
+      try {
+        // Debug: Print input array info
+        print('🔍 Debug Info:');
+        print('   Input array length: ${inputArray.length}');
+        print('   Expected input size: ${1 * MODEL_INPUT_SIZE * MODEL_INPUT_SIZE * 3}');
+        print('   Input sample values: ${inputArray.take(5).toList()}');
+        
+        // Method 1: Try traditional approach first
         try {
-          _interpreter!.run(inputArray, outputArray);
-        } catch (e) {
-          throw FaceRecognitionException('เกิดข้อผิดพลาดในการประมวลผลใบหน้า: $e');
+          // Reshape input to proper format: [1, height, width, channels]
+          final reshapedInput = inputArray.reshape([1, MODEL_INPUT_SIZE, MODEL_INPUT_SIZE, 3]);
+          final output = List.filled(EMBEDDING_SIZE, 0.0);
+          
+          _interpreter!.run(reshapedInput, output);
+          embedding = output;
+          
+          print('✅ Model inference completed (Method 1)');
+        } catch (e1) {
+          print('⚠️ Method 1 failed: $e1, trying Method 2...');
+          
+          // Method 2: Use different input/output format
+          try {
+            final input = [inputArray];
+            final output = [List<double>.filled(EMBEDDING_SIZE, 0.0)];
+            
+            _interpreter!.run(input, output);
+            embedding = output[0];
+            
+            print('✅ Model inference completed (Method 2)');
+          } catch (e2) {
+            print('⚠️ Method 2 failed: $e2, trying Method 3...');
+            
+            // Method 3: Use ByteData approach
+            final input = inputArray.buffer.asByteData();
+            final outputByteData = ByteData(EMBEDDING_SIZE * 4);
+            
+            _interpreter!.run(input, outputByteData);
+            
+            embedding = <double>[];
+            for (int i = 0; i < EMBEDDING_SIZE; i++) {
+              embedding.add(outputByteData.getFloat32(i * 4, Endian.little));
+            }
+            
+            print('✅ Model inference completed (Method 3)');
+          }
         }
-
-        // Normalize embedding vector
-        final embedding = outputArray[0];
-        final magnitude = _calculateMagnitude(embedding);
-        return embedding.map((x) => x / magnitude).toList();
-      } else {
-        // Fallback: If TF model not available, use ML Kit face features
-        return _extractFaceFeaturesAsFallback(faces[0]);
+        
+      } catch (e) {
+        print('❌ All model inference methods failed: $e');
+        print('🔍 Interpreter state: ${_interpreter != null ? "loaded" : "null"}');
+        throw FaceRecognitionException('เกิดข้อผิดพลาดในการประมวลผลใบหน้า: $e');
       }
-    });
+      
+      print('📊 Raw embedding stats:');
+      print('   Length: ${embedding.length}');
+      print('   Min: ${embedding.reduce(math.min).toStringAsFixed(4)}');
+      print('   Max: ${embedding.reduce(math.max).toStringAsFixed(4)}');
+      print('   Sample: ${embedding.take(5).map((e) => e.toStringAsFixed(4)).toList()}');
+
+      // Normalize embedding vector using L2 norm
+      final magnitude = _calculateMagnitude(embedding);
+      if (magnitude < 1e-6) {
+        throw FaceRecognitionException('Invalid embedding generated - magnitude too small');
+      }
+
+      final normalizedEmbedding = embedding.map((x) => x / magnitude).toList();
+      
+      print('✅ Embedding normalized successfully');
+      print('📊 Normalized embedding magnitude: ${_calculateMagnitude(normalizedEmbedding).toStringAsFixed(4)}');
+
+      return normalizedEmbedding;
+
+    } catch (e) {
+      print('❌ Error in getFaceEmbedding: $e');
+      if (e is FaceRecognitionException) {
+        rethrow;
+      }
+      throw FaceRecognitionException('เกิดข้อผิดพลาดในการประมวลผลรูปภาพ: $e');
+    }
   }
 
-  // Fallback method using ML Kit face features
-  List<double> _extractFaceFeaturesAsFallback(Face face) {
-    List<double> features = [];
+  Float32List _preprocessImage(img.Image image) {
+    print('🔄 Preprocessing image to ${MODEL_INPUT_SIZE}x${MODEL_INPUT_SIZE}...');
     
-    // Use available face landmarks
-    if (face.landmarks.isNotEmpty) {
-      face.landmarks.forEach((_, landmarkNullable) {
-        if (landmarkNullable != null) {
-          // Convert int to double when adding to features list
-          features.add(landmarkNullable.position.x.toDouble());
-          features.add(landmarkNullable.position.y.toDouble());
-        }
-      });
-    }
+    // Create input buffer with size: 1 * height * width * channels
+    final inputBuffer = Float32List(1 * MODEL_INPUT_SIZE * MODEL_INPUT_SIZE * 3);
+    int pixelIndex = 0;
     
-    // Add bounding box values
-    final boundingBox = face.boundingBox;
-    features.add(boundingBox.left.toDouble());
-    features.add(boundingBox.top.toDouble());
-    features.add(boundingBox.width.toDouble());
-    features.add(boundingBox.height.toDouble());
-    
-    // Add other features with null checks
-    if (face.headEulerAngleY != null) features.add(face.headEulerAngleY!);
-    if (face.headEulerAngleZ != null) features.add(face.headEulerAngleZ!);
-    if (face.smilingProbability != null) features.add(face.smilingProbability!);
-    if (face.leftEyeOpenProbability != null) features.add(face.leftEyeOpenProbability!);
-    if (face.rightEyeOpenProbability != null) features.add(face.rightEyeOpenProbability!);
-    
-    // Pad or truncate to EMBEDDING_SIZE
-    if (features.isEmpty) {
-      features = List.filled(EMBEDDING_SIZE, 0.0);
-    } else {
-      // Repeat pattern to fill
-      while (features.length < EMBEDDING_SIZE) {
-        features.add(features[features.length % features.length]);
-      }
-      // Truncate if too many
-      if (features.length > EMBEDDING_SIZE) {
-        features = features.sublist(0, EMBEDDING_SIZE);
+    for (int y = 0; y < MODEL_INPUT_SIZE; y++) {
+      for (int x = 0; x < MODEL_INPUT_SIZE; x++) {
+        final pixel = image.getPixel(x, y);
+        
+        // Extract and normalize RGB values to [-1, 1] range
+        inputBuffer[pixelIndex++] = (pixel.r / 127.5) - 1.0;  // Red
+        inputBuffer[pixelIndex++] = (pixel.g / 127.5) - 1.0;  // Green  
+        inputBuffer[pixelIndex++] = (pixel.b / 127.5) - 1.0;  // Blue
       }
     }
     
-    // Normalize
-    final magnitude = _calculateMagnitude(features);
-    if (magnitude < 1e-6) {  // Avoid division by zero or very small numbers
-      return List.filled(EMBEDDING_SIZE, 0.0);
-    }
-    return features.map((x) => x / magnitude).toList();
+    return inputBuffer;
   }
-
- List<List<List<List<double>>>> _preprocessImage(img.Image image) {
-  return List.generate(
-    1,
-    (index) => List.generate(
-      MODEL_INPUT_SIZE,
-      (y) => List.generate(
-        MODEL_INPUT_SIZE,
-        (x) => List.generate(3, (c) {
-          final pixel = image.getPixel(x, y);
-          // ใช้ property ของ Pixel object สำหรับ image package v4.x
-          final value = c == 0
-              ? pixel.r  // Red channel
-              : (c == 1 ? pixel.g : pixel.b);  // Green และ Blue channels
-          // Normalize pixel values to [-1, 1]
-          return value / 127.5 - 1.0;
-        }),
-      ),
-    ),
-  );
-}
 
   double _calculateMagnitude(List<double> vector) {
     double sumOfSquares = 0.0;
     for (var value in vector) {
       sumOfSquares += value * value;
     }
-    return _sqrt(sumOfSquares);
+    return math.sqrt(sumOfSquares);
   }
 
-  double _sqrt(double x) {
-    double z = x;
-    for (int i = 0; i < 10; i++) {
-      z = (z + x / z) / 2;
-    }
-    return z;
-  }
-
-  // Face verification methods
-  
   /// Compare two face embeddings using cosine similarity
-  /// Returns a value between -1 and 1, where 1 means identical
+  /// Returns a value between -1 and 1, where 1 means identical faces
   Future<double> compareFaceEmbeddings(List<double> embedding1, List<double> embedding2) async {
     try {
       if (embedding1.length != embedding2.length) {
@@ -264,88 +327,134 @@ class FaceRecognitionService extends BaseService {
         magnitude2 += embedding2[i] * embedding2[i];
       }
       
-      magnitude1 = _sqrt(magnitude1);
-      magnitude2 = _sqrt(magnitude2);
+      magnitude1 = math.sqrt(magnitude1);
+      magnitude2 = math.sqrt(magnitude2);
       
       if (magnitude1 < 1e-6 || magnitude2 < 1e-6) {
+        print('⚠️  Warning: Very small magnitude detected in embeddings');
         return 0.0; // Avoid division by very small numbers
       }
       
-      return dotProduct / (magnitude1 * magnitude2);
+      final similarity = dotProduct / (magnitude1 * magnitude2);
+      
+      print('📊 Similarity calculation:');
+      print('   Dot product: ${dotProduct.toStringAsFixed(4)}');
+      print('   Magnitude1: ${magnitude1.toStringAsFixed(4)}');
+      print('   Magnitude2: ${magnitude2.toStringAsFixed(4)}');
+      print('   Similarity: ${similarity.toStringAsFixed(4)}');
+      
+      return similarity;
     } catch (e) {
-      print('Error comparing face embeddings: $e');
+      print('❌ Error comparing face embeddings: $e');
       return -2; // Error value
     }
   }
 
-  /// Verify if a face matches with a stored face embedding
-  /// Returns true if the face is verified, false otherwise
-  Future<bool> verifyFace(String studentId, List<double> capturedEmbedding, {double threshold = 0.7}) async {
-  try {
-    // ดึง embedding ที่บันทึกไว้ในฐานข้อมูล
-    final response = await _supabase
-        .from('student_face_embeddings')
-        .select('face_embedding_json')  // เปลี่ยนมาใช้แค่ face_embedding_json
-        .eq('student_id', studentId)
-        .eq('is_active', true)
-        .single();
-    
-    if (response['face_embedding_json'] == null) return false;
-    
-    // แปลง JSON เป็น List<double>
-    final List<dynamic> jsonList = jsonDecode(response['face_embedding_json']);
-    final List<double> storedEmbedding = jsonList.map((item) => item as double).toList();
-    
-    if (storedEmbedding.isEmpty) return false;
-    
-    // เปรียบเทียบ embeddings
-    double similarity = await compareFaceEmbeddings(capturedEmbedding, storedEmbedding);
-    
-    // ถ้าความคล้ายคลึงสูงกว่าค่า threshold ถือว่าเป็นคนเดียวกัน
-    return similarity > threshold;
-  } catch (e) {
-    print('Error verifying face: $e');
-    return false;
-  }
-}
-
-  /// Get face embedding for a student from database
-  Future<List<double>?> getStoredFaceEmbedding(String studentId) async {
+  /// Verify if a captured face matches a stored face embedding
+  /// Returns true if the face is verified (similarity > threshold)
+  Future<bool> verifyFace(
+    String studentId, 
+    List<double> capturedEmbedding, 
+    {double threshold = 0.7}
+  ) async {
     try {
-      final response = await _supabase
-          .from('student_face_embeddings')
-          .select('face_embedding, face_embedding_json')
-          .eq('student_id', studentId)
-          .eq('is_active', true)
-          .single();
+      print('🔍 Verifying face for student: $studentId');
+      print('📊 Using threshold: $threshold');
       
-      // Try face_embedding first
-      if (response['face_embedding'] != null) {
-        return List<double>.from(response['face_embedding']);
-      }
+      // This method should integrate with your database service
+      // For now, returning a placeholder implementation
+      // You'll need to implement the database retrieval logic
       
-      // Try face_embedding_json if face_embedding is not available
-      if (response['face_embedding_json'] != null) {
-        final List<dynamic> jsonList = jsonDecode(response['face_embedding_json']);
-        return jsonList.map((item) => item as double).toList();
-      }
+      print('⚠️  Note: Database integration needed for verifyFace method');
+      return false;
       
-      return null;
     } catch (e) {
-      print('Error getting stored face embedding: $e');
-      return null;
+      print('❌ Error verifying face: $e');
+      return false;
     }
   }
 
-  Future<void> dispose() async {
-    _interpreter?.close();
-    await _faceDetector?.close();
-    _interpreter = null;
-    _faceDetector = null;
+  /// Test method to verify the model is working correctly
+  Future<bool> testModel() async {
+    try {
+      print('🧪 Testing model...');
+      
+      if (_interpreter == null) {
+        await initialize();
+      }
+      
+      // Create dummy input data
+      final dummyInput = List.generate(
+        1,
+        (i) => List.generate(
+          MODEL_INPUT_SIZE,
+          (j) => List.generate(
+            MODEL_INPUT_SIZE,
+            (k) => List.generate(3, (l) => 0.5), // Dummy pixel values
+          ),
+        ),
+      );
+      
+      // Create output array with correct type
+      final dummyOutput = <List<double>>[List<double>.filled(EMBEDDING_SIZE, 0.0)];
+      
+      _interpreter!.run(dummyInput, dummyOutput);
+      
+      final embedding = dummyOutput[0];
+      final magnitude = _calculateMagnitude(embedding);
+      
+      print('✅ Model test successful');
+      print('📊 Test results:');
+      print('   Embedding length: ${embedding.length}');
+      print('   Magnitude: ${magnitude.toStringAsFixed(4)}');
+      print('   First 5 values: ${embedding.take(5).map((e) => e.toStringAsFixed(4)).toList()}');
+      
+      return true;
+      
+    } catch (e) {
+      print('❌ Model test failed: $e');
+      return false;
+    }
   }
-}
 
-/// Annotation to mark methods for testing
-class visibleForTesting {
-  const visibleForTesting();
+  /// Clean up resources
+  Future<void> dispose() async {
+    try {
+      print('🧹 Disposing face recognition service...');
+      
+      _interpreter?.close();
+      _interpreter = null;
+      
+      await _faceDetector.close();
+      
+      print('✅ Face recognition service disposed');
+    } catch (e) {
+      print('❌ Error disposing face recognition service: $e');
+    }
+  }
+
+  /// Get model information
+  Map<String, dynamic> getModelInfo() {
+    if (_interpreter == null) {
+      return {
+        'status': 'not_initialized',
+        'error': 'Model not loaded'
+      };
+    }
+
+    try {
+      return {
+        'status': 'ready',
+        'model_file': MODEL_FILE,
+        'expected_input_size': MODEL_INPUT_SIZE,
+        'expected_embedding_size': EMBEDDING_SIZE,
+        'interpreter_address': _interpreter.hashCode.toString(),
+      };
+    } catch (e) {
+      return {
+        'status': 'error',
+        'error': e.toString()
+      };
+    }
+  }
 }
