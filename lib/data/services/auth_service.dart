@@ -3,6 +3,7 @@
 import 'dart:math';
 import 'dart:convert';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'dart:math' as math;
 
 class AuthService {
   final SupabaseClient _supabase = Supabase.instance.client;
@@ -174,7 +175,12 @@ class AuthService {
   Future<bool> hasFaceEmbedding() async {
     try {
       final email = getCurrentUserEmail();
-      if (email == null) return false;
+      if (email == null) {
+        print('🔍 hasFaceEmbedding: No current user email');
+        return false;
+      }
+
+      print('🔍 hasFaceEmbedding: Checking for email: $email');
 
       // ดึง school_id จาก users table
       final userResponse = await _supabase
@@ -183,22 +189,37 @@ class AuthService {
           .eq('email', email)
           .maybeSingle();
 
-      if (userResponse == null) return false;
+      if (userResponse == null) {
+        print('❌ hasFaceEmbedding: User not found');
+        return false;
+      }
       
       final schoolId = userResponse['school_id'];
-      if (schoolId == null || schoolId.toString().isEmpty) return false;
+      if (schoolId == null || schoolId.toString().isEmpty) {
+        print('❌ hasFaceEmbedding: School ID is empty');
+        return false;
+      }
+
+      print('🎓 hasFaceEmbedding: Checking school_id: $schoolId');
 
       // ตรวจสอบใน student_face_embeddings table โดยใช้ school_id
       final response = await _supabase
           .from('student_face_embeddings')
-          .select('id')
+          .select('id, face_quality, created_at')
           .eq('student_id', schoolId.toString())
           .eq('is_active', true)
           .maybeSingle();
 
-      return response != null;
+      final hasFace = response != null;
+      print('✅ hasFaceEmbedding result: $hasFace');
+      
+      if (hasFace) {
+        print('📊 Face data: quality=${response['face_quality']}, created=${response['created_at']}');
+      }
+
+      return hasFace;
     } catch (e) {
-      print('Error checking face embedding: $e');
+      print('❌ Error checking face embedding: $e');
       return false;
     }
   }
@@ -211,6 +232,24 @@ class AuthService {
       }
 
       print('🔍 Step 1: Current user email: $email');
+
+      // Validate embedding
+      if (embedding.isEmpty) {
+        throw Exception('Empty embedding provided');
+      }
+      
+      if (embedding.length != 128) {
+        throw Exception('Invalid embedding size: ${embedding.length}, expected: 128');
+      }
+
+      // Check for invalid values
+      for (int i = 0; i < embedding.length; i++) {
+        if (!embedding[i].isFinite) {
+          throw Exception('Invalid embedding values detected at index $i');
+        }
+      }
+
+      print('✅ Step 1.5: Embedding validation passed');
 
       // ดึงข้อมูล user จาก database
       final userResponse = await _supabase
@@ -230,7 +269,7 @@ class AuthService {
         throw Exception('School ID is null or empty for user: $email');
       }
 
-      final schoolIdString = schoolId.toString();
+      final schoolIdString = schoolId.toString().trim();
       print('🎓 Step 3: Using school_id: "$schoolIdString" (type: ${schoolId.runtimeType})');
 
       // ตรวจสอบว่า school_id นี้มีอยู่จริงในฐานข้อมูล
@@ -250,61 +289,139 @@ class AuthService {
       // ตรวจสอบข้อมูลเดิมใน student_face_embeddings
       final existing = await _supabase
           .from('student_face_embeddings')
-          .select('id, student_id, is_active')
+          .select('id, student_id, is_active, created_at')
           .eq('student_id', schoolIdString)
           .maybeSingle();
 
       print('📋 Step 5: Existing face data check: $existing');
 
+      // Prepare embedding data
       final embeddingJson = jsonEncode(embedding);
-      final quality = 0.95;
+      final quality = _calculateEmbeddingQuality(embedding);
+      final timestamp = DateTime.now().toIso8601String();
+
+      print('📊 Step 6: Embedding quality calculated: ${quality.toStringAsFixed(3)}');
 
       if (existing != null) {
-        print('📝 Step 6: Updating existing record...');
+        print('📝 Step 7: Updating existing record...');
         
         final updateData = {
           'face_embedding_json': embeddingJson,
           'face_quality': quality,
           'is_active': true,
+          'updated_at': timestamp,
         };
 
-        print('📤 Update data: $updateData');
+        print('📤 Update data prepared (size: ${embeddingJson.length} chars)');
 
-        await _supabase.from('student_face_embeddings')
+        final updateResult = await _supabase
+            .from('student_face_embeddings')
             .update(updateData)
-            .eq('student_id', schoolIdString);
+            .eq('student_id', schoolIdString)
+            .select();
         
-        print('✅ Successfully updated face embedding');
+        print('✅ Successfully updated face embedding: $updateResult');
       } else {
-        print('➕ Step 6: Inserting new record...');
+        print('➕ Step 7: Inserting new record...');
         
         final insertData = {
           'student_id': schoolIdString,
           'face_embedding_json': embeddingJson,
           'face_quality': quality,
-          'is_active': true
+          'is_active': true,
+          'created_at': timestamp,
+          'updated_at': timestamp,
         };
 
-        print('📤 Insert data: $insertData');
+        print('📤 Insert data prepared (size: ${embeddingJson.length} chars)');
 
-        await _supabase.from('student_face_embeddings').insert(insertData);
+        final insertResult = await _supabase
+            .from('student_face_embeddings')
+            .insert(insertData)
+            .select();
         
-        print('✅ Successfully inserted face embedding');
+        print('✅ Successfully inserted face embedding: $insertResult');
       }
 
       // ตรวจสอบผลลัพธ์สุดท้าย
       final finalCheck = await _supabase
           .from('student_face_embeddings')
-          .select('id, student_id, face_quality, is_active, created_at')
+          .select('id, student_id, face_quality, is_active, created_at, updated_at')
           .eq('student_id', schoolIdString)
           .eq('is_active', true)
           .maybeSingle();
 
-      print('🎯 Final verification: $finalCheck');
+      if (finalCheck == null) {
+        throw Exception('Failed to verify saved face embedding');
+      }
+
+      print('🎯 Final verification successful: $finalCheck');
+      print('✅ Face embedding saved successfully for student: $schoolIdString');
       
     } catch (e) {
       print('❌ ERROR in saveFaceEmbedding: $e');
-      throw Exception('ไม่สามารถบันทึกข้อมูลใบหน้าได้: $e');
+      
+      // Provide more specific error messages
+      String errorMessage = 'ไม่สามารถบันทึกข้อมูลใบหน้าได้';
+      
+      if (e.toString().contains('No authenticated user')) {
+        errorMessage = 'กรุณาเข้าสู่ระบบใหม่';
+      } else if (e.toString().contains('User not found')) {
+        errorMessage = 'ไม่พบข้อมูลผู้ใช้ กรุณาติดต่อผู้ดูแลระบบ';
+      } else if (e.toString().contains('School ID')) {
+        errorMessage = 'ข้อมูลรหัสนักเรียนไม่ถูกต้อง กรุณาติดต่อผู้ดูแลระบบ';
+      } else if (e.toString().contains('Invalid embedding')) {
+        errorMessage = 'ข้อมูลใบหน้าไม่ถูกต้อง กรุณาลองถ่ายรูปใหม่';
+      } else if (e.toString().contains('connection') || e.toString().contains('network')) {
+        errorMessage = 'ปัญหาการเชื่อมต่อ กรุณาตรวจสอบอินเทอร์เน็ต';
+      }
+      
+      throw Exception('$errorMessage: ${e.toString()}');
+    }
+  }
+
+  double _calculateEmbeddingQuality(List<double> embedding) {
+    try {
+      // Calculate basic quality metrics
+      double sum = 0.0;
+      double sumSquares = 0.0;
+      double minVal = embedding[0];
+      double maxVal = embedding[0];
+      
+      for (var value in embedding) {
+        sum += value;
+        sumSquares += value * value;
+        if (value < minVal) minVal = value;
+        if (value > maxVal) maxVal = value;
+      }
+      
+      final mean = sum / embedding.length;
+      final variance = (sumSquares / embedding.length) - (mean * mean);
+      final stdDev = math.sqrt(variance);
+      final range = maxVal - minVal;
+      
+      // Quality score based on distribution and range
+      double quality = 0.5; // Base quality
+      
+      // Good standard deviation indicates good feature distribution
+      if (stdDev > 0.1 && stdDev < 1.0) {
+        quality += 0.2;
+      }
+      
+      // Good range indicates good feature separation
+      if (range > 0.5 && range < 3.0) {
+        quality += 0.2;
+      }
+      
+      // Penalize if mean is too far from 0 (should be normalized)
+      if (mean.abs() < 0.1) {
+        quality += 0.1;
+      }
+      
+      return quality.clamp(0.0, 1.0);
+    } catch (e) {
+      print('Warning: Failed to calculate embedding quality: $e');
+      return 0.5; // Default quality
     }
   }
 
@@ -341,7 +458,11 @@ class AuthService {
   Future<void> deactivateFaceEmbedding() async {
     try {
       final email = getCurrentUserEmail();
-      if (email == null) return;
+      if (email == null) {
+        throw Exception('No authenticated user');
+      }
+
+      print('🔄 Deactivating face embedding for user: $email');
 
       // ดึง school_id จาก users table
       final userResponse = await _supabase
@@ -350,21 +471,28 @@ class AuthService {
           .eq('email', email)
           .maybeSingle();
 
-      if (userResponse == null) return;
+      if (userResponse == null) {
+        throw Exception('User not found');
+      }
       
       final schoolId = userResponse['school_id'];
-      if (schoolId == null || schoolId.toString().isEmpty) return;
+      if (schoolId == null || schoolId.toString().isEmpty) {
+        throw Exception('School ID not found');
+      }
 
-      await _supabase.from('student_face_embeddings')
+      final result = await _supabase
+          .from('student_face_embeddings')
           .update({
             'is_active': false,
             'updated_at': DateTime.now().toIso8601String()
           })
-          .eq('student_id', schoolId.toString());
+          .eq('student_id', schoolId.toString())
+          .select();
       
-      print('Deactivated face embedding for student: $schoolId');
+      print('✅ Deactivated face embedding for student: $schoolId');
+      print('📊 Update result: $result');
     } catch (e) {
-      print('Error deactivating face embedding: $e');
+      print('❌ Error deactivating face embedding: $e');
       throw Exception('ไม่สามารถลบข้อมูลใบหน้าได้: $e');
     }
   }
@@ -396,7 +524,7 @@ class AuthService {
         
         return response;
       } catch (e) {
-        print('Error fetching face details: $e');
+        print('No face embedding found for student: $schoolId');
         return null;
       }
     } catch (e) {
@@ -424,18 +552,22 @@ class AuthService {
 
       final response = await _supabase
           .from('student_face_embeddings')
-          .select('face_embedding, face_embedding_json')
+          .select('face_embedding_json')
           .eq('student_id', schoolId.toString())
           .eq('is_active', true)
           .single();
       
-      if (response['face_embedding'] != null) {
-        return List<double>.from(response['face_embedding']);
-      }
-      
       if (response['face_embedding_json'] != null) {
         final List<dynamic> jsonList = jsonDecode(response['face_embedding_json']);
-        return jsonList.map((item) => item as double).toList();
+        final embedding = jsonList.map((item) => item as double).toList();
+        
+        // Validate embedding
+        if (embedding.length != 128) {
+          print('Warning: Invalid embedding size: ${embedding.length}');
+          return null;
+        }
+        
+        return embedding;
       }
       
       return null;
@@ -464,55 +596,88 @@ class AuthService {
 
       await _supabase.from('student_face_embeddings')
           .update({
-            'face_quality': quality,
+            'face_quality': quality.clamp(0.0, 1.0),
             'updated_at': DateTime.now().toIso8601String()
           })
           .eq('student_id', schoolId.toString());
+          
+      print('✅ Updated face quality to: ${quality.toStringAsFixed(3)}');
     } catch (e) {
-      print('Error updating face quality: $e');
+      print('❌ Error updating face quality: $e');
     }
   }
+
 
   // Face comparison for attendance
   Future<double> compareFaceEmbeddings(List<double> embedding1, List<double> embedding2) async {
     try {
+      if (embedding1.length != embedding2.length) {
+        throw Exception('Embeddings have different dimensions: ${embedding1.length} vs ${embedding2.length}');
+      }
+      
+      if (embedding1.length != 128) {
+        throw Exception('Invalid embedding size: ${embedding1.length}');
+      }
+      
+      // Validate embeddings
+      for (int i = 0; i < embedding1.length; i++) {
+        if (!embedding1[i].isFinite || !embedding2[i].isFinite) {
+          throw Exception('Invalid embedding values detected');
+        }
+      }
+      
       double dotProduct = 0.0;
       for (int i = 0; i < embedding1.length; i++) {
         dotProduct += embedding1[i] * embedding2[i];
       }
       
-      return dotProduct;
+      // For normalized embeddings, cosine similarity = dot product
+      return dotProduct.clamp(-1.0, 1.0);
     } catch (e) {
-      print('Error comparing face embeddings: $e');
-      return -2;
+      print('❌ Error comparing face embeddings: $e');
+      return -2.0; // Error value
     }
   }
 
   Future<bool> verifyFace(String studentId, List<double> capturedEmbedding, {double threshold = 0.7}) async {
     try {
+      print('🔍 Verifying face for student: $studentId with threshold: $threshold');
+      
       final response = await _supabase
           .from('student_face_embeddings')
-          .select('face_embedding, face_embedding_json')
+          .select('face_embedding_json')
           .eq('student_id', studentId)
           .eq('is_active', true)
           .single();
       
-      List<double>? storedEmbedding;
-      
-      if (response['face_embedding'] != null) {
-        storedEmbedding = List<double>.from(response['face_embedding']);
-      } else if (response['face_embedding_json'] != null) {
-        final List<dynamic> jsonList = jsonDecode(response['face_embedding_json']);
-        storedEmbedding = jsonList.map((item) => item as double).toList();
+      if (response['face_embedding_json'] == null) {
+        print('❌ No face embedding found for student: $studentId');
+        return false;
       }
       
-      if (storedEmbedding == null) return false;
+      final List<dynamic> jsonList = jsonDecode(response['face_embedding_json']);
+      final storedEmbedding = jsonList.map((item) => item as double).toList();
+      
+      if (storedEmbedding.length != capturedEmbedding.length) {
+        print('❌ Embedding size mismatch: ${storedEmbedding.length} vs ${capturedEmbedding.length}');
+        return false;
+      }
       
       double similarity = await compareFaceEmbeddings(capturedEmbedding, storedEmbedding);
       
-      return similarity > threshold;
+      if (similarity == -2.0) {
+        print('❌ Error in similarity calculation');
+        return false;
+      }
+      
+      final isVerified = similarity > threshold;
+      print('📊 Face verification result: ${isVerified ? "PASSED" : "FAILED"}');
+      print('   Similarity: ${similarity.toStringAsFixed(4)}');
+      print('   Threshold: ${threshold.toStringAsFixed(4)}');
+      
+      return isVerified;
     } catch (e) {
-      print('Error verifying face: $e');
+      print('❌ Error verifying face: $e');
       return false;
     }
   }
@@ -711,4 +876,5 @@ class AuthService {
       throw Exception('Failed to leave class: ${e.toString()}');
     }
   }
+  
 }

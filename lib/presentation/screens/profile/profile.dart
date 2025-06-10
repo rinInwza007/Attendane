@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:myproject2/data/services/auth_service.dart';
 import 'package:myproject2/data/services/face_recognition_service.dart';
@@ -166,43 +168,93 @@ class _ProfileState extends State<Profile> {
     );
   }
 
-  Future<void> _checkFaceData() async {
+   Future<void> _checkFaceData() async {
+    if (!mounted) return;
+    
     try {
       final hasFace = await _authService.hasFaceEmbedding();
       if (!hasFace && mounted) {
-        showDialog(
+        // Show dialog with better UX
+        final shouldCapture = await showDialog<bool>(
           context: context,
           barrierDismissible: false,
           builder: (context) => AlertDialog(
-            title: const Text('ข้อมูลไม่ครบถ้วน'),
-            content: const Text(
-                'คุณยังไม่ได้บันทึกข้อมูลใบหน้า กรุณาเลือกรูปภาพใบหน้าเพื่อใช้ในการเช็คชื่อ'),
+            title: const Row(
+              children: [
+                Icon(Icons.face_retouching_natural, color: Colors.orange),
+                SizedBox(width: 12),
+                Text('ข้อมูลไม่ครบถ้วน'),
+              ],
+            ),
+            content: const Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'คุณยังไม่ได้บันทึกข้อมูลใบหน้า',
+                  style: TextStyle(fontWeight: FontWeight.w500),
+                ),
+                SizedBox(height: 12),
+                Text(
+                  'การบันทึกข้อมูลใบหน้าจำเป็นสำหรับ:',
+                  style: TextStyle(fontSize: 14),
+                ),
+                SizedBox(height: 8),
+                Row(
+                  children: [
+                    Icon(Icons.check, size: 16, color: Colors.green),
+                    SizedBox(width: 8),
+                    Expanded(child: Text('การเช็คชื่อด้วย Face Recognition', style: TextStyle(fontSize: 13))),
+                  ],
+                ),
+                SizedBox(height: 4),
+                Row(
+                  children: [
+                    Icon(Icons.check, size: 16, color: Colors.green),
+                    SizedBox(width: 8),
+                    Expanded(child: Text('ความปลอดภัยในการยืนยันตัวตน', style: TextStyle(fontSize: 13))),
+                  ],
+                ),
+              ],
+            ),
             actions: [
-              ElevatedButton(
-                onPressed: () {
-                  Navigator.of(context).pop();
-                  _navigateToCamera();
-                },
-                child: const Text('เลือกรูปภาพ'),
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(false),
+                child: const Text('ข้ามไปก่อน'),
+              ),
+              ElevatedButton.icon(
+                onPressed: () => Navigator.of(context).pop(true),
+                icon: const Icon(Icons.photo_camera),
+                label: const Text('เลือกรูปภาพ'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.purple.shade400,
+                  foregroundColor: Colors.white,
+                ),
               ),
             ],
           ),
         );
+        
+        if (shouldCapture == true && mounted) {
+          _navigateToCamera();
+        }
       }
     } catch (e) {
+      print('❌ Error in _checkFaceData: $e');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-              content:
-                  Text('เกิดข้อผิดพลาดในการตรวจสอบข้อมูล: ${e.toString()}')),
-        );
+        _showErrorSnackBar('เกิดข้อผิดพลาดในการตรวจสอบข้อมูล: ${e.toString()}');
       }
     }
   }
 
   Future<void> _navigateToCamera() async {
+    if (!mounted) return;
+    
+    setState(() => _isLoading = true);
+    
     try {
-      // ไม่เรียก callback onImageCaptured เพื่อหลีกเลี่ยงปัญหา widget lifecycle
+      print('📱 Opening face capture screen...');
+      
       final String? imagePath = await Navigator.push<String>(
         context,
         MaterialPageRoute(
@@ -212,70 +264,349 @@ class _ProfileState extends State<Profile> {
         ),
       );
 
-      // ทำงานต่อเมื่อได้รับรูปภาพกลับมา
-      if (imagePath != null && mounted) {
-        setState(() => _isLoading = true);
-        
-        try {
-          // ประมวลผลใบหน้า
-          final faceService = FaceRecognitionService();
-          await faceService.initialize();
-          final embedding = await faceService.getFaceEmbedding(imagePath);
-          await faceService.dispose();
+      if (!mounted) return;
 
-          // บันทึกลงฐานข้อมูล
-          await _authService.saveFaceEmbedding(embedding);
-
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('บันทึกข้อมูลใบหน้าสำเร็จ')),
-            );
-            setState(() {}); // Refresh UI to update face data section
-          }
-        } catch (e) {
-          if (mounted) {
-            String errorMessage = 'เกิดข้อผิดพลาด: ${e.toString()}';
-            
-            if (e.toString().contains('ไม่พบใบหน้า')) {
-              errorMessage = 'ไม่พบใบหน้าในรูปภาพ กรุณาเลือกรูปที่เห็นใบหน้าชัดเจน';
-            } else if (e.toString().contains('พบใบหน้าหลาย')) {
-              errorMessage = 'พบใบหน้าหลายใบในรูปภาพ กรุณาเลือกรูปที่มีเพียงใบหน้าของคุณเท่านั้น';
-            }
-            
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(errorMessage),
-                duration: const Duration(seconds: 5),
-                action: SnackBarAction(
-                  label: 'ลองใหม่',
-                  onPressed: () {
-                    ScaffoldMessenger.of(context).hideCurrentSnackBar();
-                    _navigateToCamera();
-                  },
-                ),
-              ),
-            );
-          }
-        } finally {
-          if (mounted) {
-            setState(() => _isLoading = false);
-          }
+      if (imagePath == null) {
+        print('❌ No image selected, returning to face check');
+        setState(() => _isLoading = false);
+        // ให้ผู้ใช้ลองใหม่หลังจาก 2 วินาที
+        await Future.delayed(const Duration(seconds: 2));
+        if (mounted) {
+          _checkFaceData();
         }
-      } else if (mounted) {
-        // ถ้าผู้ใช้ยกเลิก ให้ตรวจสอบอีกครั้ง
-        await Future.delayed(const Duration(seconds: 1));
-        _checkFaceData();
+        return;
       }
+
+      print('📷 Image selected: $imagePath');
+      await _processFaceImage(imagePath);
+
     } catch (e) {
+      print('❌ Error in _navigateToCamera: $e');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-              content: Text('เกิดข้อผิดพลาดในการเลือกรูปภาพ: ${e.toString()}')),
-        );
+        setState(() => _isLoading = false);
+        _showErrorSnackBar('เกิดข้อผิดพลาดในการเลือกรูปภาพ: ${e.toString()}');
       }
     }
   }
+  Future<void> _processFaceImage(String imagePath) async {
+  if (!mounted) return;
+  
+  try {
+    print('🔄 Processing face image: $imagePath');
+    
+    // Validate file before processing
+    final file = File(imagePath);
+    if (!await file.exists()) {
+      throw Exception('ไม่พบไฟล์รูปภาพที่เลือก');
+    }
 
+    final fileStat = await file.stat();
+    if (fileStat.size == 0) {
+      throw Exception('ไฟล์รูปภาพเสียหายหรือว่างเปล่า');
+    }
+
+    print('✅ File validation passed, size: ${fileStat.size} bytes');
+
+    // Show processing indicator
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Row(
+            children: [
+              SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                ),
+              ),
+              SizedBox(width: 12),
+              Text('กำลังประมวลผลข้อมูลใบหน้า...'),
+            ],
+          ),
+          duration: Duration(seconds: 30),
+        ),
+      );
+    }
+
+    // Initialize and run face recognition
+    final faceService = FaceRecognitionService();
+    
+    try {
+      print('🤖 Checking model availability...');
+      
+      // ตรวจสอบ model ก่อน
+      final modelAvailable = await faceService.checkModelAvailability();
+      if (!modelAvailable) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).hideCurrentSnackBar();
+          _showModelUnavailableDialog();
+        }
+        return;
+      }
+      
+      print('🤖 Initializing face recognition service...');
+      await faceService.initialize();
+      
+      print('🧠 Processing face embedding...');
+      final embedding = await faceService.getFaceEmbedding(imagePath);
+      
+      print('💾 Saving face embedding to database...');
+      await _authService.saveFaceEmbedding(embedding);
+      
+      print('✅ Face embedding saved successfully');
+
+      if (mounted) {
+        // Hide processing snackbar
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+        
+        // Show success message
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Row(
+              children: [
+                Icon(Icons.check_circle, color: Colors.white),
+                SizedBox(width: 12),
+                Text('บันทึกข้อมูลใบหน้าสำเร็จ'),
+              ],
+            ),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 3),
+          ),
+        );
+        
+        // Refresh UI
+        setState(() {});
+      }
+      
+    } finally {
+      await faceService.dispose();
+      print('🧹 Face recognition service disposed');
+    }
+
+    // Clean up temporary file
+    try {
+      if (await file.exists()) {
+        await file.delete();
+        print('🗑️ Temporary image file deleted');
+      }
+    } catch (e) {
+      print('⚠️ Failed to delete temporary file: $e');
+    }
+
+  } catch (e) {
+    print('❌ Error in _processFaceImage: $e');
+    
+    if (mounted) {
+      // Hide processing snackbar
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+      
+      // จำแนกประเภท error
+      if (e.toString().contains('AI Model ไม่พร้อมใช้งาน')) {
+        _showModelUnavailableDialog();
+      } else if (e.toString().contains('ไม่รองรับอุปกรณ์')) {
+        _showDeviceNotSupportedDialog();
+      } else if (e.toString().contains('ไม่พบไฟล์ AI Model')) {
+        _showModelMissingDialog();
+      } else {
+        // Error ทั่วไป
+        String errorMessage = 'เกิดข้อผิดพลาด: ${e.toString()}';
+        
+        if (e.toString().contains('ไม่พบใบหน้า')) {
+          errorMessage = 'ไม่พบใบหน้าในรูปภาพ กรุณาเลือกรูปที่เห็นใบหน้าชัดเจน';
+        } else if (e.toString().contains('พบใบหน้าหลาย')) {
+          errorMessage = 'พบใบหน้าหลายใบในรูปภาพ กรุณาเลือกรูปที่มีเพียงใบหน้าของคุณเท่านั้น';
+        }
+        
+        _showRetrySnackBar(errorMessage);
+      }
+    }
+  } finally {
+    if (mounted) {
+      setState(() => _isLoading = false);
+    }
+  }
+}
+void _showDeviceNotSupportedDialog() {
+  if (!mounted) return;
+  
+  showDialog(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: const Row(
+        children: [
+          Icon(Icons.phone_android, color: Colors.orange),
+          SizedBox(width: 12),
+          Text('อุปกรณ์ไม่รองรับ'),
+        ],
+      ),
+      content: const Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('อุปกรณ์นี้ไม่รองรับ Face Recognition'),
+          SizedBox(height: 12),
+          Text('ข้อกำหนดขั้นต่ำ:'),
+          SizedBox(height: 8),
+          Text('• Android 7.0 ขึ้นไป'),
+          Text('• RAM 3GB ขึ้นไป'),
+          Text('• มีกล้องหน้า'),
+          SizedBox(height: 12),
+          Text(
+            'คุณยังสามารถใช้แอปได้ปกติ แต่จะต้องเช็คชื่อด้วยวิธีอื่น',
+            style: TextStyle(fontSize: 13, color: Colors.grey),
+          ),
+        ],
+      ),
+      actions: [
+        ElevatedButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('เข้าใจแล้ว'),
+        ),
+      ],
+    ),
+  );
+}
+
+// Dialog สำหรับ Model file หายไป
+void _showModelMissingDialog() {
+  if (!mounted) return;
+  
+  showDialog(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: const Row(
+        children: [
+          Icon(Icons.file_download_off, color: Colors.red),
+          SizedBox(width: 12),
+          Text('ไฟล์ AI Model หายไป'),
+        ],
+      ),
+      content: const Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('ไม่พบไฟล์ AI Model ที่จำเป็นสำหรับ Face Recognition'),
+          SizedBox(height: 12),
+          Text('วิธีแก้ไข:'),
+          SizedBox(height: 8),
+          Text('• ลงแอปใหม่จาก Play Store'),
+          Text('• ติดต่อผู้พัฒนาแอป'),
+          Text('• รอการอัปเดตแอป'),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('ปิด'),
+        ),
+        ElevatedButton(
+          onPressed: () {
+            Navigator.of(context).pop();
+            // เปิด Play Store หรือ settings
+          },
+          child: const Text('ไปที่ Play Store'),
+        ),
+      ],
+    ),
+  );
+}
+void _showModelUnavailableDialog() {
+  if (!mounted) return;
+  
+  showDialog(
+    context: context,
+    barrierDismissible: false,
+    builder: (context) => AlertDialog(
+      title: const Row(
+        children: [
+          Icon(Icons.error, color: Colors.red),
+          SizedBox(width: 12),
+          Text('ระบบ AI ไม่พร้อมใช้งาน'),
+        ],
+      ),
+      content: const Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'ระบบ Face Recognition ไม่พร้อมใช้งานในขณะนี้',
+            style: TextStyle(fontWeight: FontWeight.w500),
+          ),
+          SizedBox(height: 12),
+          Text('สาเหตุที่เป็นไปได้:'),
+          SizedBox(height: 8),
+          Text('• ไฟล์ AI Model หายไป'),
+          Text('• อุปกรณ์ไม่รองรับ'),
+          Text('• แอปไม่ได้ติดตั้งอย่างสมบูรณ์'),
+          SizedBox(height: 12),
+          Text(
+            'คุณยังสามารถใช้แอปได้ปกติ แต่จะไม่สามารถเช็คชื่อด้วย Face Recognition ได้',
+            style: TextStyle(fontSize: 13, color: Colors.grey),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('เข้าใจแล้ว'),
+        ),
+        ElevatedButton(
+          onPressed: () {
+            Navigator.of(context).pop();
+            _navigateToCamera(); // ลองใหม่
+          },
+          child: const Text('ลองใหม่'),
+        ),
+      ],
+    ),
+  );
+}
+
+  void _showErrorSnackBar(String message) {
+    if (!mounted) return;
+    
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            const Icon(Icons.error_outline, color: Colors.white),
+            const SizedBox(width: 12),
+            Expanded(child: Text(message)),
+          ],
+        ),
+        backgroundColor: Colors.red,
+        duration: const Duration(seconds: 5),
+      ),
+    );
+  }
+
+  void _showRetrySnackBar(String message) {
+    if (!mounted) return;
+    
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            const Icon(Icons.warning_amber, color: Colors.white),
+            const SizedBox(width: 12),
+            Expanded(child: Text(message)),
+          ],
+        ),
+        backgroundColor: Colors.orange.shade700,
+        duration: const Duration(seconds: 8),
+        action: SnackBarAction(
+          label: 'ลองใหม่',
+          textColor: Colors.white,
+          onPressed: () {
+            ScaffoldMessenger.of(context).hideCurrentSnackBar();
+            _navigateToCamera();
+          },
+        ),
+      ),
+    );
+  }
   // แก้ไขฟังก์ชันใน profile.dart
 
 Future<Map<String, dynamic>?> _getFaceEmbeddingDetails() async {
