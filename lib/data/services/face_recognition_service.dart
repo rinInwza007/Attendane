@@ -18,9 +18,9 @@ class FaceRecognitionService {
   Interpreter? _interpreter;
   final FaceDetector _faceDetector;
   
-  // Constants for the converted model
-  static const int MODEL_INPUT_SIZE = 112;
-  static const int EMBEDDING_SIZE = 128;  // Changed from 256 to 128
+  // Updated constants for 224x224 model
+  static const int MODEL_INPUT_SIZE = 224;  // Changed from 112 to 224
+  static const int EMBEDDING_SIZE = 128;
   static const String MODEL_FILE = 'assets/converted_model.tflite';
 
   FaceRecognitionService()
@@ -176,21 +176,17 @@ class FaceRecognitionService {
         throw FaceRecognitionException('ไม่สามารถอ่านรูปภาพได้ กรุณาลองรูปอื่น');
       }
 
-      // Resize and preprocess image
+      // Resize to 224x224 and preprocess image
       final preprocessedImage = img.copyResize(
         image,
-        width: MODEL_INPUT_SIZE,
-        height: MODEL_INPUT_SIZE,
+        width: MODEL_INPUT_SIZE,  // Now 224
+        height: MODEL_INPUT_SIZE, // Now 224
         interpolation: img.Interpolation.linear,
       );
 
-      print('🔄 Preprocessing image...');
+      print('🔄 Preprocessing image to ${MODEL_INPUT_SIZE}x${MODEL_INPUT_SIZE}...');
       final inputArray = _preprocessImage(preprocessedImage);
       
-      // Create output buffer using Float32List
-      final outputBuffer = Float32List(EMBEDDING_SIZE);
-      final outputs = <int, Object>{0: outputBuffer};
-
       print('🧠 Running model inference...');
       
       // ประกาศตัวแปร embedding ที่นี่
@@ -288,12 +284,23 @@ class FaceRecognitionService {
       for (int x = 0; x < MODEL_INPUT_SIZE; x++) {
         final pixel = image.getPixel(x, y);
         
-        // Extract and normalize RGB values to [-1, 1] range
-        inputBuffer[pixelIndex++] = (pixel.r / 127.5) - 1.0;  // Red
-        inputBuffer[pixelIndex++] = (pixel.g / 127.5) - 1.0;  // Green  
-        inputBuffer[pixelIndex++] = (pixel.b / 127.5) - 1.0;  // Blue
+        // Extract and normalize RGB values to [0, 1] range for 224x224 models
+        // หรือคุณอาจต้องการใช้ [-1, 1] range ขึ้นอยู่กับ model ของคุณ
+        inputBuffer[pixelIndex++] = pixel.r / 255.0;  // Red [0, 1]
+        inputBuffer[pixelIndex++] = pixel.g / 255.0;  // Green [0, 1]
+        inputBuffer[pixelIndex++] = pixel.b / 255.0;  // Blue [0, 1]
+        
+        // หากต้องการ [-1, 1] range ให้ใช้บรรทัดด้านล่างแทน
+        // inputBuffer[pixelIndex++] = (pixel.r / 127.5) - 1.0;  // Red [-1, 1]
+        // inputBuffer[pixelIndex++] = (pixel.g / 127.5) - 1.0;  // Green [-1, 1]  
+        // inputBuffer[pixelIndex++] = (pixel.b / 127.5) - 1.0;  // Blue [-1, 1]
       }
     }
+    
+    print('📊 Preprocessed image buffer:');
+    print('   Buffer length: ${inputBuffer.length}');
+    print('   Expected length: ${1 * MODEL_INPUT_SIZE * MODEL_INPUT_SIZE * 3}');
+    print('   Sample values: ${inputBuffer.take(9).toList()}');
     
     return inputBuffer;
   }
@@ -383,7 +390,7 @@ class FaceRecognitionService {
         await initialize();
       }
       
-      // Create dummy input data
+      // Create dummy input data for 224x224x3
       final dummyInput = List.generate(
         1,
         (i) => List.generate(
