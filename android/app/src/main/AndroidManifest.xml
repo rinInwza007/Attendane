@@ -3,33 +3,39 @@
     xmlns:tools="http://schemas.android.com/tools"
     package="com.example.myproject2">
     
-    <!-- สิทธิ์การใช้งานกล้อง -->
-    <uses-permission android:name="android.permission.CAMERA" />
-    <uses-feature android:name="android.hardware.camera" />
-    <uses-feature android:name="android.hardware.camera.autofocus" />
-    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
-   <!-- สำหรับ Android 9 (API level 28) และเก่ากว่า -->
-   <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
-   <!-- อนุญาตอื่นๆ ที่มีอยู่แล้ว -->
-    <!-- สิทธิ์การจัดเก็บไฟล์ -->
-    
-    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" 
-                     android:maxSdkVersion="28"
-                     tools:replace="android:maxSdkVersion" />
-    
     <!-- สิทธิ์การเชื่อมต่ออินเทอร์เน็ต -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
-    <uses-permission android:name="android.permission.INTERNET" />
-    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
-    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
     
+    <!-- สิทธิ์การใช้งานกล้อง -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature 
+        android:name="android.hardware.camera" 
+        android:required="false" />
+    <uses-feature 
+        android:name="android.hardware.camera.autofocus" 
+        android:required="false" />
+    
+    <!-- สิทธิ์การจัดเก็บไฟล์ - รวมเป็นเวอร์ชันเดียว -->
+    <!-- สำหรับ Android 13+ (API 33+) -->
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+    
+    <!-- สำหรับ Android 9-12 (API 28-32) -->
+    <uses-permission 
+        android:name="android.permission.READ_EXTERNAL_STORAGE" 
+        android:maxSdkVersion="32" />
+    
+    <!-- สำหรับ Android 9 และเก่ากว่า (API 28 และต่ำกว่า) -->
+    <uses-permission 
+        android:name="android.permission.WRITE_EXTERNAL_STORAGE" 
+        android:maxSdkVersion="28" />
 
     <application
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
         android:label="Attendance Plus"
-        android:usesCleartextTraffic="true">
+        android:usesCleartextTraffic="true"
+        android:requestLegacyExternalStorage="true">
         
         <activity
             android:name=".MainActivity"
@@ -52,9 +58,30 @@
                 android:resource="@style/NormalTheme" />
         </activity>
         
+        <!-- File Provider สำหรับ Image Picker -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
+        
         <!-- ปลั๊กอิน Flutter Embedding -->
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
     </application>
+    
+    <!-- Query สำหรับ Camera และ Gallery -->
+    <queries>
+        <intent>
+            <action android:name="android.media.action.IMAGE_CAPTURE" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.GET_CONTENT" />
+        </intent>
+    </queries>
 </manifest>

@@ -5,6 +5,7 @@ import 'package:myproject2/data/services/auth_service.dart';
 import 'package:myproject2/data/services/face_recognition_service.dart';
 import 'package:myproject2/presentation/common_widgets/image_picker_screen.dart';
 import 'package:myproject2/presentation/screens/settings/setting.dart';
+import 'package:myproject2/presentation/screens/attendance/simple_student_attendance_screen.dart';
 
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -68,8 +69,8 @@ class _ProfileState extends State<Profile> {
   @override
   void initState() {
     super.initState();
-    _loadClasses(); // เรียกโหลดข้อมูลคลาสเมื่อเปิดหน้า
-    _checkFaceData();
+    _loadClasses();
+    _checkFaceDataForAttendance(); // ตรวจสอบเฉพาะเมื่อจำเป็น
   }
 
   Future<void> _loadClasses() async {
@@ -77,12 +78,11 @@ class _ProfileState extends State<Profile> {
     try {
       final classes = await _authService.getStudentClasses();
       setState(() {
-        _joinedClasses.clear(); // ล้างข้อมูลเก่า
-        _joinedClasses.addAll(classes); // เพิ่มข้อมูลใหม่
+        _joinedClasses.clear();
+        _joinedClasses.addAll(classes);
       });
     } catch (e) {
       print('Error loading classes: $e');
-      // อาจจะแสดง error message ให้ผู้ใช้
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Failed to load classes. Please try again.'),
@@ -139,7 +139,6 @@ class _ProfileState extends State<Profile> {
                   studentEmail: userEmail,
                 );
 
-                // หลังจาก join สำเร็จ ให้โหลดข้อมูลใหม่
                 await _loadClasses();
 
                 Navigator.pop(context);
@@ -168,82 +167,89 @@ class _ProfileState extends State<Profile> {
     );
   }
 
-   Future<void> _checkFaceData() async {
-    if (!mounted) return;
-    
+  // ตรวจสอบข้อมูลใบหน้าเฉพาะเมื่อจำเป็นต่อการเข้าใช้งาน
+  Future<void> _checkFaceDataForAttendance() async {
+    // ไม่แสดง dialog หรือการแจ้งเตือนอัตโนมัติ
+    // เฉพาะตรวจสอบเบื้องหลัง
     try {
       final hasFace = await _authService.hasFaceEmbedding();
-      if (!hasFace && mounted) {
-        // Show dialog with better UX
-        final shouldCapture = await showDialog<bool>(
-          context: context,
-          barrierDismissible: false,
-          builder: (context) => AlertDialog(
-            title: const Row(
-              children: [
-                Icon(Icons.face_retouching_natural, color: Colors.orange),
-                SizedBox(width: 12),
-                Text('ข้อมูลไม่ครบถ้วน'),
-              ],
-            ),
-            content: const Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'คุณยังไม่ได้บันทึกข้อมูลใบหน้า',
-                  style: TextStyle(fontWeight: FontWeight.w500),
-                ),
-                SizedBox(height: 12),
-                Text(
-                  'การบันทึกข้อมูลใบหน้าจำเป็นสำหรับ:',
-                  style: TextStyle(fontSize: 14),
-                ),
-                SizedBox(height: 8),
-                Row(
-                  children: [
-                    Icon(Icons.check, size: 16, color: Colors.green),
-                    SizedBox(width: 8),
-                    Expanded(child: Text('การเช็คชื่อด้วย Face Recognition', style: TextStyle(fontSize: 13))),
-                  ],
-                ),
-                SizedBox(height: 4),
-                Row(
-                  children: [
-                    Icon(Icons.check, size: 16, color: Colors.green),
-                    SizedBox(width: 8),
-                    Expanded(child: Text('ความปลอดภัยในการยืนยันตัวตน', style: TextStyle(fontSize: 13))),
-                  ],
-                ),
-              ],
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(false),
-                child: const Text('ข้ามไปก่อน'),
-              ),
-              ElevatedButton.icon(
-                onPressed: () => Navigator.of(context).pop(true),
-                icon: const Icon(Icons.photo_camera),
-                label: const Text('เลือกรูปภาพ'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.purple.shade400,
-                  foregroundColor: Colors.white,
-                ),
-              ),
-            ],
-          ),
-        );
-        
-        if (shouldCapture == true && mounted) {
-          _navigateToCamera();
-        }
+      // บันทึกสถานะไว้ใช้ภายหลังเมื่อจำเป็น
+      if (!hasFace) {
+        print('ℹ️ Face data not found - user can set up later when needed');
       }
     } catch (e) {
-      print('❌ Error in _checkFaceData: $e');
-      if (mounted) {
-        _showErrorSnackBar('เกิดข้อผิดพลาดในการตรวจสอบข้อมูล: ${e.toString()}');
-      }
+      print('❌ Error checking face data: $e');
+    }
+  }
+
+  // ฟังก์ชันสำหรับตั้งค่าข้อมูลใบหน้าเมื่อผู้ใช้ต้องการ
+  Future<void> _setupFaceRecognition() async {
+    final shouldSetup = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.face_retouching_natural, color: Colors.blue),
+            SizedBox(width: 12),
+            Text('ตั้งค่า Face Recognition'),
+          ],
+        ),
+        content: const Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Face Recognition จะช่วยให้การเช็คชื่อสะดวกและปลอดภัยมากขึ้น',
+              style: TextStyle(fontWeight: FontWeight.w500),
+            ),
+            SizedBox(height: 12),
+            Text('คุณสมบัติ:'),
+            SizedBox(height: 8),
+            Row(
+              children: [
+                Icon(Icons.check, size: 16, color: Colors.green),
+                SizedBox(width: 8),
+                Expanded(child: Text('เช็คชื่อรวดเร็ว')),
+              ],
+            ),
+            SizedBox(height: 4),
+            Row(
+              children: [
+                Icon(Icons.check, size: 16, color: Colors.green),
+                SizedBox(width: 8),
+                Expanded(child: Text('ป้องกันการโกง')),
+              ],
+            ),
+            SizedBox(height: 4),
+            Row(
+              children: [
+                Icon(Icons.check, size: 16, color: Colors.green),
+                SizedBox(width: 8),
+                Expanded(child: Text('ความปลอดภัยสูง')),
+              ],
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('ข้ามไปก่อน'),
+          ),
+          ElevatedButton.icon(
+            onPressed: () => Navigator.of(context).pop(true),
+            icon: const Icon(Icons.photo_camera),
+            label: const Text('ตั้งค่าเลย'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.blue.shade400,
+              foregroundColor: Colors.white,
+            ),
+          ),
+        ],
+      ),
+    );
+    
+    if (shouldSetup == true && mounted) {
+      _navigateToCamera();
     }
   }
 
@@ -267,13 +273,8 @@ class _ProfileState extends State<Profile> {
       if (!mounted) return;
 
       if (imagePath == null) {
-        print('❌ No image selected, returning to face check');
+        print('❌ No image selected');
         setState(() => _isLoading = false);
-        // ให้ผู้ใช้ลองใหม่หลังจาก 2 วินาที
-        await Future.delayed(const Duration(seconds: 2));
-        if (mounted) {
-          _checkFaceData();
-        }
         return;
       }
 
@@ -288,281 +289,182 @@ class _ProfileState extends State<Profile> {
       }
     }
   }
+
   Future<void> _processFaceImage(String imagePath) async {
-  if (!mounted) return;
-  
-  try {
-    print('🔄 Processing face image: $imagePath');
-    
-    // Validate file before processing
-    final file = File(imagePath);
-    if (!await file.exists()) {
-      throw Exception('ไม่พบไฟล์รูปภาพที่เลือก');
-    }
-
-    final fileStat = await file.stat();
-    if (fileStat.size == 0) {
-      throw Exception('ไฟล์รูปภาพเสียหายหรือว่างเปล่า');
-    }
-
-    print('✅ File validation passed, size: ${fileStat.size} bytes');
-
-    // Show processing indicator
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Row(
-            children: [
-              SizedBox(
-                width: 20,
-                height: 20,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                ),
-              ),
-              SizedBox(width: 12),
-              Text('กำลังประมวลผลข้อมูลใบหน้า...'),
-            ],
-          ),
-          duration: Duration(seconds: 30),
-        ),
-      );
-    }
-
-    // Initialize and run face recognition
-    final faceService = FaceRecognitionService();
+    if (!mounted) return;
     
     try {
-      print('🤖 Checking model availability...');
+      print('🔄 Processing face image: $imagePath');
       
-      // ตรวจสอบ model ก่อน
-      final modelAvailable = await faceService.checkModelAvailability();
-      if (!modelAvailable) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).hideCurrentSnackBar();
-          _showModelUnavailableDialog();
-        }
-        return;
+      final file = File(imagePath);
+      if (!await file.exists()) {
+        throw Exception('ไม่พบไฟล์รูปภาพที่เลือก');
       }
-      
-      print('🤖 Initializing face recognition service...');
-      await faceService.initialize();
-      
-      print('🧠 Processing face embedding...');
-      final embedding = await faceService.getFaceEmbedding(imagePath);
-      
-      print('💾 Saving face embedding to database...');
-      await _authService.saveFaceEmbedding(embedding);
-      
-      print('✅ Face embedding saved successfully');
+
+      final fileStat = await file.stat();
+      if (fileStat.size == 0) {
+        throw Exception('ไฟล์รูปภาพเสียหายหรือว่างเปล่า');
+      }
+
+      print('✅ File validation passed, size: ${fileStat.size} bytes');
 
       if (mounted) {
-        // Hide processing snackbar
-        ScaffoldMessenger.of(context).hideCurrentSnackBar();
-        
-        // Show success message
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Row(
               children: [
-                Icon(Icons.check_circle, color: Colors.white),
+                SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                  ),
+                ),
                 SizedBox(width: 12),
-                Text('บันทึกข้อมูลใบหน้าสำเร็จ'),
+                Text('กำลังประมวลผลข้อมูลใบหน้า...'),
               ],
             ),
-            backgroundColor: Colors.green,
-            duration: Duration(seconds: 3),
+            duration: Duration(seconds: 30),
           ),
         );
-        
-        // Refresh UI
-        setState(() {});
       }
-      
-    } finally {
-      await faceService.dispose();
-      print('🧹 Face recognition service disposed');
-    }
 
-    // Clean up temporary file
-    try {
-      if (await file.exists()) {
-        await file.delete();
-        print('🗑️ Temporary image file deleted');
-      }
-    } catch (e) {
-      print('⚠️ Failed to delete temporary file: $e');
-    }
-
-  } catch (e) {
-    print('❌ Error in _processFaceImage: $e');
-    
-    if (mounted) {
-      // Hide processing snackbar
-      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+      final faceService = FaceRecognitionService();
       
-      // จำแนกประเภท error
-      if (e.toString().contains('AI Model ไม่พร้อมใช้งาน')) {
-        _showModelUnavailableDialog();
-      } else if (e.toString().contains('ไม่รองรับอุปกรณ์')) {
-        _showDeviceNotSupportedDialog();
-      } else if (e.toString().contains('ไม่พบไฟล์ AI Model')) {
-        _showModelMissingDialog();
-      } else {
-        // Error ทั่วไป
-        String errorMessage = 'เกิดข้อผิดพลาด: ${e.toString()}';
+      try {
+        print('🤖 Checking model availability...');
         
-        if (e.toString().contains('ไม่พบใบหน้า')) {
-          errorMessage = 'ไม่พบใบหน้าในรูปภาพ กรุณาเลือกรูปที่เห็นใบหน้าชัดเจน';
-        } else if (e.toString().contains('พบใบหน้าหลาย')) {
-          errorMessage = 'พบใบหน้าหลายใบในรูปภาพ กรุณาเลือกรูปที่มีเพียงใบหน้าของคุณเท่านั้น';
+        final modelAvailable = await faceService.checkModelAvailability();
+        if (!modelAvailable) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).hideCurrentSnackBar();
+            _showModelUnavailableDialog();
+          }
+          return;
         }
         
-        _showRetrySnackBar(errorMessage);
+        print('🤖 Initializing face recognition service...');
+        await faceService.initialize();
+        
+        print('🧠 Processing face embedding...');
+        final embedding = await faceService.getFaceEmbedding(imagePath);
+        
+        print('💾 Saving face embedding to database...');
+        await _authService.saveFaceEmbedding(embedding);
+        
+        print('✅ Face embedding saved successfully');
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).hideCurrentSnackBar();
+          
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Row(
+                children: [
+                  Icon(Icons.check_circle, color: Colors.white),
+                  SizedBox(width: 12),
+                  Text('ตั้งค่า Face Recognition สำเร็จ'),
+                ],
+              ),
+              backgroundColor: Colors.green,
+              duration: Duration(seconds: 3),
+            ),
+          );
+        }
+        
+      } finally {
+        await faceService.dispose();
+        print('🧹 Face recognition service disposed');
+      }
+
+      try {
+        if (await file.exists()) {
+          await file.delete();
+          print('🗑️ Temporary image file deleted');
+        }
+      } catch (e) {
+        print('⚠️ Failed to delete temporary file: $e');
+      }
+
+    } catch (e) {
+      print('❌ Error in _processFaceImage: $e');
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+        
+        if (e.toString().contains('AI Model ไม่พร้อมใช้งาน')) {
+          _showModelUnavailableDialog();
+        } else {
+          String errorMessage = 'เกิดข้อผิดพลาด: ${e.toString()}';
+          
+          if (e.toString().contains('ไม่พบใบหน้า')) {
+            errorMessage = 'ไม่พบใบหน้าในรูปภาพ กรุณาเลือกรูปที่เห็นใบหน้าชัดเจน';
+          } else if (e.toString().contains('พบใบหน้าหลาย')) {
+            errorMessage = 'พบใบหน้าหลายใบในรูปภาพ กรุณาเลือกรูปที่มีเพียงใบหน้าของคุณเท่านั้น';
+          }
+          
+          _showRetrySnackBar(errorMessage);
+        }
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
       }
     }
-  } finally {
-    if (mounted) {
-      setState(() => _isLoading = false);
-    }
   }
-}
-void _showDeviceNotSupportedDialog() {
-  if (!mounted) return;
-  
-  showDialog(
-    context: context,
-    builder: (context) => AlertDialog(
-      title: const Row(
-        children: [
-          Icon(Icons.phone_android, color: Colors.orange),
-          SizedBox(width: 12),
-          Text('อุปกรณ์ไม่รองรับ'),
-        ],
-      ),
-      content: const Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text('อุปกรณ์นี้ไม่รองรับ Face Recognition'),
-          SizedBox(height: 12),
-          Text('ข้อกำหนดขั้นต่ำ:'),
-          SizedBox(height: 8),
-          Text('• Android 7.0 ขึ้นไป'),
-          Text('• RAM 3GB ขึ้นไป'),
-          Text('• มีกล้องหน้า'),
-          SizedBox(height: 12),
-          Text(
-            'คุณยังสามารถใช้แอปได้ปกติ แต่จะต้องเช็คชื่อด้วยวิธีอื่น',
-            style: TextStyle(fontSize: 13, color: Colors.grey),
-          ),
-        ],
-      ),
-      actions: [
-        ElevatedButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('เข้าใจแล้ว'),
-        ),
-      ],
-    ),
-  );
-}
 
-// Dialog สำหรับ Model file หายไป
-void _showModelMissingDialog() {
-  if (!mounted) return;
-  
-  showDialog(
-    context: context,
-    builder: (context) => AlertDialog(
-      title: const Row(
-        children: [
-          Icon(Icons.file_download_off, color: Colors.red),
-          SizedBox(width: 12),
-          Text('ไฟล์ AI Model หายไป'),
-        ],
-      ),
-      content: const Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text('ไม่พบไฟล์ AI Model ที่จำเป็นสำหรับ Face Recognition'),
-          SizedBox(height: 12),
-          Text('วิธีแก้ไข:'),
-          SizedBox(height: 8),
-          Text('• ลงแอปใหม่จาก Play Store'),
-          Text('• ติดต่อผู้พัฒนาแอป'),
-          Text('• รอการอัปเดตแอป'),
-        ],
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('ปิด'),
+  void _showModelUnavailableDialog() {
+    if (!mounted) return;
+    
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.error, color: Colors.red),
+            SizedBox(width: 12),
+            Text('ระบบ AI ไม่พร้อมใช้งาน'),
+          ],
         ),
-        ElevatedButton(
-          onPressed: () {
-            Navigator.of(context).pop();
-            // เปิด Play Store หรือ settings
-          },
-          child: const Text('ไปที่ Play Store'),
+        content: const Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'ระบบ Face Recognition ไม่พร้อมใช้งานในขณะนี้',
+              style: TextStyle(fontWeight: FontWeight.w500),
+            ),
+            SizedBox(height: 12),
+            Text('สาเหตุที่เป็นไปได้:'),
+            SizedBox(height: 8),
+            Text('• ไฟล์ AI Model หายไป'),
+            Text('• อุปกรณ์ไม่รองรับ'),
+            Text('• แอปไม่ได้ติดตั้งอย่างสมบูรณ์'),
+            SizedBox(height: 12),
+            Text(
+              'คุณยังสามารถใช้แอปได้ปกติ แต่จะไม่สามารถเช็คชื่อด้วย Face Recognition ได้',
+              style: TextStyle(fontSize: 13, color: Colors.grey),
+            ),
+          ],
         ),
-      ],
-    ),
-  );
-}
-void _showModelUnavailableDialog() {
-  if (!mounted) return;
-  
-  showDialog(
-    context: context,
-    barrierDismissible: false,
-    builder: (context) => AlertDialog(
-      title: const Row(
-        children: [
-          Icon(Icons.error, color: Colors.red),
-          SizedBox(width: 12),
-          Text('ระบบ AI ไม่พร้อมใช้งาน'),
-        ],
-      ),
-      content: const Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'ระบบ Face Recognition ไม่พร้อมใช้งานในขณะนี้',
-            style: TextStyle(fontWeight: FontWeight.w500),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('เข้าใจแล้ว'),
           ),
-          SizedBox(height: 12),
-          Text('สาเหตุที่เป็นไปได้:'),
-          SizedBox(height: 8),
-          Text('• ไฟล์ AI Model หายไป'),
-          Text('• อุปกรณ์ไม่รองรับ'),
-          Text('• แอปไม่ได้ติดตั้งอย่างสมบูรณ์'),
-          SizedBox(height: 12),
-          Text(
-            'คุณยังสามารถใช้แอปได้ปกติ แต่จะไม่สามารถเช็คชื่อด้วย Face Recognition ได้',
-            style: TextStyle(fontSize: 13, color: Colors.grey),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.of(context).pop();
+              _navigateToCamera();
+            },
+            child: const Text('ลองใหม่'),
           ),
         ],
       ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('เข้าใจแล้ว'),
-        ),
-        ElevatedButton(
-          onPressed: () {
-            Navigator.of(context).pop();
-            _navigateToCamera(); // ลองใหม่
-          },
-          child: const Text('ลองใหม่'),
-        ),
-      ],
-    ),
-  );
-}
+    );
+  }
 
   void _showErrorSnackBar(String message) {
     if (!mounted) return;
@@ -607,71 +509,6 @@ void _showModelUnavailableDialog() {
       ),
     );
   }
-  // แก้ไขฟังก์ชันใน profile.dart
-
-Future<Map<String, dynamic>?> _getFaceEmbeddingDetails() async {
-  try {
-    final userProfile = await _authService.getUserProfile();
-    if (userProfile == null) return null;
-    
-    final schoolId = userProfile['school_id'];
-    if (schoolId == null || schoolId.isEmpty) return null;
-    
-    try {
-      final response = await Supabase.instance.client
-          .from('student_face_embeddings')
-          .select('id, face_quality, created_at, updated_at')
-          .eq('student_id', schoolId)  // ใช้ school_id
-          .eq('is_active', true)
-          .single();
-      
-      return response;
-    } catch (e) {
-      print('Error fetching face details: $e');
-      return null;
-    }
-  } catch (e) {
-    print('Error in _getFaceEmbeddingDetails: $e');
-    return null;
-  }
-}
-
-Future<void> _deactivateFaceEmbedding() async {
-  try {
-    final userProfile = await _authService.getUserProfile();
-    if (userProfile == null) return;
-    
-    final schoolId = userProfile['school_id'];
-    if (schoolId == null || schoolId.isEmpty) return;
-
-    await Supabase.instance.client
-        .from('student_face_embeddings')
-        .update({
-          'is_active': false,
-          'updated_at': DateTime.now().toIso8601String()
-        })
-        .eq('student_id', schoolId);  // ใช้ school_id
-    
-    setState(() {});
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('ลบข้อมูลใบหน้าเรียบร้อยแล้ว'),
-          backgroundColor: Colors.green,
-        ),
-      );
-    }
-  } catch (e) {
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('เกิดข้อผิดพลาดในการลบข้อมูลใบหน้า: ${e.toString()}'),
-          backgroundColor: Colors.red,
-        ),
-      );
-    }
-  }
-}
 
   Widget _previewInfoRow(String label, String? value) {
     return Padding(
@@ -698,14 +535,12 @@ Future<void> _deactivateFaceEmbedding() async {
 
   void _handleSearch(String code, StateSetter setState,
       String? Function(String) updateError) async {
-    // Check if code is empty
     if (code.isEmpty) {
       setState(() => updateError('Please enter a class code'));
       return;
     }
 
     try {
-      // ใช้ invite_code ในการค้นหาคลาส
       final classDetails = await _authService.getClassByInviteCode(code);
 
       if (classDetails == null) {
@@ -720,8 +555,7 @@ Future<void> _deactivateFaceEmbedding() async {
         'code': code,
         'schedule': classDetails['schedule']?.toString() ?? '',
         'room': classDetails['room']?.toString() ?? '',
-        'description':
-            'Join this class to start learning', // Default description
+        'description': 'Join this class to start learning',
         'students': '0',
         'maxStudents': '50'
       };
@@ -815,13 +649,11 @@ Future<void> _deactivateFaceEmbedding() async {
                   throw Exception('User not logged in');
                 }
 
-                // เรียกใช้ leaveClass function
                 await _authService.leaveClass(
                   classId: classData['id'],
                   studentEmail: userEmail,
                 );
 
-                // รีโหลดข้อมูลคลาสหลังจากออกสำเร็จ
                 await _loadClasses();
 
                 Navigator.pop(context);
@@ -858,160 +690,21 @@ Future<void> _deactivateFaceEmbedding() async {
     });
   }
 
-  Widget _buildFaceDataInfo() {
-    return FutureBuilder<Map<String, dynamic>?>(
-      future: _getFaceEmbeddingDetails(),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
-        }
-        
-        final faceData = snapshot.data;
-        
-        if (faceData == null) {
-          return Card(
-            margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            child: Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'ข้อมูลใบหน้า',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  const Center(
-                    child: Text('ไม่มีข้อมูลใบหน้า',
-                      style: TextStyle(color: Colors.grey),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton.icon(
-                      onPressed: _navigateToCamera,
-                      icon: const Icon(Icons.add_a_photo_outlined),
-                      label: const Text('เพิ่มข้อมูลใบหน้า'),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          );
-        }
-        
-        // คำนวณคุณภาพเป็นเปอร์เซ็นต์
-        final quality = faceData['face_quality'] ?? 0.0;
-        final qualityPercent = (quality * 100).toStringAsFixed(0);
-        
-        // แปลงวันที่
-        final updatedAt = faceData['updated_at'] != null
-            ? DateTime.parse(faceData['updated_at']).toLocal()
-            : null;
-        
-        return Card(
-          margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          child: Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text('ข้อมูลใบหน้า',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 16),
-                
-                Row(
-                  children: [
-                    const Text('คุณภาพภาพใบหน้า: '),
-                    const SizedBox(width: 8),
-                    _buildQualityIndicator(quality),
-                    const SizedBox(width: 8),
-                    Text('$qualityPercent%',
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        color: _getQualityColor(quality),
-                      ),
-                    ),
-                  ],
-                ),
-                
-                const SizedBox(height: 8),
-                if (updatedAt != null)
-                  Text('อัปเดตล่าสุด: ${_formatDate(updatedAt)}'),
-                
-                const SizedBox(height: 16),
-                
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                  children: [
-                    OutlinedButton.icon(
-                      onPressed: _navigateToCamera,
-                      icon: const Icon(Icons.refresh),
-                      label: const Text('อัปเดตใหม่'),
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                      ),
-                    ),
-                    ElevatedButton.icon(
-                      onPressed: _deactivateFaceEmbedding,
-                      icon: const Icon(Icons.delete_outline),
-                      label: const Text('ลบข้อมูล'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.red.shade100,
-                        foregroundColor: Colors.red.shade700,
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _buildQualityIndicator(double quality) {
-    Color color = _getQualityColor(quality);
-    
-    return Container(
-      width: 100,
-      height: 10,
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(5),
-        color: Colors.grey.shade200,
-      ),
-      child: FractionallySizedBox(
-        widthFactor: quality,
-        alignment: Alignment.centerLeft,
-        child: Container(
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(5),
-            color: color,
-          ),
+  // ปุ่มสำหรับไปหน้าเช็คชื่อ
+  void _goToAttendance(Map<String, dynamic> classData) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => SimpleStudentAttendanceScreen(
+          classId: classData['id'],
+          className: classData['name'],
         ),
       ),
     );
   }
 
-  Color _getQualityColor(double quality) {
-    if (quality >= 0.9) {
-      return Colors.green;
-    } else if (quality >= 0.7) {
-      return Colors.orange;
-    } else {
-      return Colors.red;
-    }
-  }
-
   String _formatDate(DateTime date) {
-    return '${date.day}/${date.month}/${date.year} ${date.hour}:${date.minute.toString().padLeft(2, '0')}';
+    return '${date.day}/${date.month}/${date.year}';
   }
 
   @override
@@ -1027,17 +720,23 @@ Future<void> _deactivateFaceEmbedding() async {
     return Scaffold(
       appBar: AppBar(
         title: const Text(
-          'Profile',
+          'Student Home',
           style: TextStyle(fontWeight: FontWeight.bold),
         ),
         centerTitle: true,
         actions: [
+          // ปุ่มตั้งค่า Face Recognition
+          IconButton(
+            icon: const Icon(Icons.face_retouching_natural),
+            onPressed: _setupFaceRecognition,
+            tooltip: 'Setup Face Recognition',
+          ),
           IconButton(
             icon: const Icon(Icons.settings),
             onPressed: () => Navigator.push(
               context,
               MaterialPageRoute(builder: (context) => const Setting()),
-            ).then((_) => setState(() {})), // Refresh when returning
+            ).then((_) => setState(() {})),
           ),
         ],
       ),
@@ -1046,7 +745,6 @@ Future<void> _deactivateFaceEmbedding() async {
           : Column(
               children: [
                 _buildProfileHeader(currentEmail),
-                _buildFaceDataInfo(),
                 const SizedBox(height: 16),
                 _buildTabBar(),
                 const SizedBox(height: 16),
@@ -1157,6 +855,15 @@ Future<void> _deactivateFaceEmbedding() async {
                 ),
                 Row(
                   children: [
+                    // ปุ่มเช็คชื่อ
+                    IconButton(
+                      icon: const Icon(
+                        Icons.how_to_reg,
+                        color: Colors.green,
+                      ),
+                      onPressed: () => _goToAttendance(classData),
+                      tooltip: 'Check Attendance',
+                    ),
                     IconButton(
                       icon: Icon(
                         classData['isFavorite']
@@ -1263,6 +970,47 @@ Future<void> _deactivateFaceEmbedding() async {
                 ),
               ],
             ),
+          ),
+          // แสดงสถานะ Face Recognition แบบง่าย
+          FutureBuilder<bool>(
+            future: _authService.hasFaceEmbedding(),
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                );
+              }
+              
+              final hasFace = snapshot.data ?? false;
+              return Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: hasFace ? Colors.green.shade100 : Colors.orange.shade100,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      hasFace ? Icons.face : Icons.face_retouching_off,
+                      size: 16,
+                      color: hasFace ? Colors.green.shade700 : Colors.orange.shade700,
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      hasFace ? 'Ready' : 'Setup',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                        color: hasFace ? Colors.green.shade700 : Colors.orange.shade700,
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
           ),
         ],
       ),
