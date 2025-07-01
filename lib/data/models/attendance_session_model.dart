@@ -22,6 +22,7 @@ class AttendanceSessionModel {
     this.updatedAt,
   });
 
+
   factory AttendanceSessionModel.fromJson(Map<String, dynamic> json) {
     return AttendanceSessionModel(
       id: json['id'] ?? '',
@@ -292,5 +293,7 @@ class AttendanceSessionModel {
         status.hashCode ^
         createdAt.hashCode ^
         (updatedAt?.hashCode ?? 0);
+  
   }
+  
 }

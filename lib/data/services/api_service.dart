@@ -9,7 +9,15 @@ import 'package:myproject2/data/models/webcam_config_model.dart';
 
 class ApiService {
   // แก้ BASE_URL เป็น IP ของเครื่องที่รัน server
-  static const String BASE_URL = 'http://192.168.1.100:8000'; // เปลี่ยนเป็น IP ของ server
+  class ApiService {
+  late final String baseUrl;
+  
+  ApiService({String? customBaseUrl}) {
+    baseUrl = customBaseUrl ?? 
+      const String.fromEnvironment('API_BASE_URL', 
+        defaultValue: 'http://192.168.1.100:8000');
+  }
+} // เปลี่ยนเป็น IP ของ server
   
   final http.Client _client = http.Client();
 
