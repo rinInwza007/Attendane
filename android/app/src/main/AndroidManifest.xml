@@ -2,41 +2,36 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"
     package="com.example.myproject2">
-    
-    <!-- สิทธิ์การเชื่อมต่ออินเทอร์เน็ต -->
+
+    <!-- ===== Permissions ===== -->
+
+    <!-- อินเทอร์เน็ต -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
-    
-    <!-- สิทธิ์การใช้งานกล้อง -->
-    <uses-permission android:name="android.permission.CAMERA" />
-    <uses-feature 
-        android:name="android.hardware.camera" 
-        android:required="false" />
-    <uses-feature 
-        android:name="android.hardware.camera.autofocus" 
-        android:required="false" />
-    
-    <!-- สิทธิ์การจัดเก็บไฟล์ - รวมเป็นเวอร์ชันเดียว -->
-    <!-- สำหรับ Android 13+ (API 33+) -->
-    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
-    
-    <!-- สำหรับ Android 9-12 (API 28-32) -->
-    <uses-permission 
-        android:name="android.permission.READ_EXTERNAL_STORAGE" 
-        android:maxSdkVersion="32" />
-    
-    <!-- สำหรับ Android 9 และเก่ากว่า (API 28 และต่ำกว่า) -->
-    <uses-permission 
-        android:name="android.permission.WRITE_EXTERNAL_STORAGE" 
-        android:maxSdkVersion="28" />
 
+    <!-- กล้อง -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />
+
+    <!-- จัดเก็บและอ่านไฟล์ -->
+    <!-- สำหรับ Android 13+ -->
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+
+    <!-- สำหรับ Android 9-12 -->
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
+
+    <!-- สำหรับ Android 9 และต่ำกว่า -->
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" />
+
+    <!-- ===== Application ===== -->
     <application
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
         android:label="Attendance Plus"
         android:usesCleartextTraffic="true"
         android:requestLegacyExternalStorage="true">
-        
+
         <activity
             android:name=".MainActivity"
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
@@ -45,20 +40,20 @@
             android:launchMode="singleTop"
             android:theme="@style/LaunchTheme"
             android:windowSoftInputMode="adjustResize">
-            
-            <!-- กำหนดค่า Intent Filter -->
+
+            <!-- Main launcher -->
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
-            
-            <!-- กำหนดค่า Meta-data -->
+
+            <!-- Theme -->
             <meta-data
                 android:name="io.flutter.embedding.android.NormalTheme"
                 android:resource="@style/NormalTheme" />
         </activity>
-        
-        <!-- File Provider สำหรับ Image Picker -->
+
+        <!-- File Provider (สำหรับ image picker / camera) -->
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"
@@ -68,14 +63,14 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/file_paths" />
         </provider>
-        
-        <!-- ปลั๊กอิน Flutter Embedding -->
+
+        <!-- Flutter embedding -->
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
     </application>
-    
-    <!-- Query สำหรับ Camera และ Gallery -->
+
+    <!-- ===== Queries (สำหรับ Camera และ Gallery) ===== -->
     <queries>
         <intent>
             <action android:name="android.media.action.IMAGE_CAPTURE" />
@@ -84,4 +79,5 @@
             <action android:name="android.intent.action.GET_CONTENT" />
         </intent>
     </queries>
+
 </manifest>

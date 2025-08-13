@@ -1,10 +1,11 @@
 // lib/presentation/screens/face/realtime_face_detection_screen.dart
 import 'dart:io';
 import 'dart:math' as math;
+import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
-import 'package:google_ml_kit/google_ml_kit.dart';
+import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
 import 'package:myproject2/data/services/face_recognition_service.dart';
 import 'package:myproject2/data/services/auth_service.dart';
 
@@ -86,8 +87,9 @@ class _RealtimeFaceDetectionScreenState extends State<RealtimeFaceDetectionScree
     try {
       print('🔄 Initializing services...');
       
-      _faceDetector = GoogleMlKit.vision.faceDetector(
-        FaceDetectorOptions(
+      // สร้าง Face Detector
+      _faceDetector = FaceDetector(
+        options: FaceDetectorOptions(
           enableLandmarks: true,
           enableClassification: true,
           enableTracking: true,
@@ -134,7 +136,7 @@ class _RealtimeFaceDetectionScreenState extends State<RealtimeFaceDetectionScree
       _cameraController = CameraController(
         frontCamera,
         ResolutionPreset.medium,
-        imageFormatGroup: ImageFormatGroup.nv21,
+        enableAudio: false,
       );
       
       await _cameraController!.initialize();
@@ -167,7 +169,7 @@ class _RealtimeFaceDetectionScreenState extends State<RealtimeFaceDetectionScree
 
   Future<void> _processImage(CameraImage image) async {
     try {
-      final inputImage = _convertCameraImage(image);
+      final inputImage = _convertCameraImageToInputImage(image);
       if (inputImage == null) return;
       
       final faces = await _faceDetector.processImage(inputImage);
@@ -199,43 +201,36 @@ class _RealtimeFaceDetectionScreenState extends State<RealtimeFaceDetectionScree
     }
   }
 
-  InputImage? _convertCameraImage(CameraImage image) {
+  // แก้ไขการแปลง CameraImage เป็น InputImage
+  InputImage? _convertCameraImageToInputImage(CameraImage image) {
     try {
-      final WriteBuffer allBytes = WriteBuffer();
-      for (final Plane plane in image.planes) {
-        allBytes.putUint8List(plane.bytes);
+      // สำหรับ Android ใช้ nv21 format
+      if (Platform.isAndroid) {
+        return InputImage.fromBytes(
+          bytes: image.planes[0].bytes,
+          metadata: InputImageMetadata(
+            size: Size(image.width.toDouble(), image.height.toDouble()),
+            rotation: InputImageRotation.rotation0deg, // ปรับตามการหมุนของกล้อง
+            format: InputImageFormat.nv21,
+            bytesPerRow: image.planes[0].bytesPerRow,
+          ),
+        );
       }
-      final bytes = allBytes.done().buffer.asUint8List();
       
-      final imageSize = Size(image.width.toDouble(), image.height.toDouble());
-      final imageRotation = InputImageRotationValue.fromRawValue(
-        _cameraController!.description.sensorOrientation,
-      );
+      // สำหรับ iOS ใช้ bgra8888 format
+      if (Platform.isIOS) {
+        return InputImage.fromBytes(
+          bytes: image.planes[0].bytes,
+          metadata: InputImageMetadata(
+            size: Size(image.width.toDouble(), image.height.toDouble()),
+            rotation: InputImageRotation.rotation0deg,
+            format: InputImageFormat.bgra8888,
+            bytesPerRow: image.planes[0].bytesPerRow,
+          ),
+        );
+      }
       
-      if (imageRotation == null) return null;
-      
-      final inputImageFormat = InputImageFormatValue.fromRawValue(image.format.raw);
-      if (inputImageFormat == null) return null;
-      
-      final planeData = image.planes.map(
-        (Plane plane) => InputImagePlaneMetadata(
-          bytesPerRow: plane.bytesPerRow,
-          height: plane.height,
-          width: plane.width,
-        ),
-      ).toList();
-      
-      final inputImageData = InputImageData(
-        size: imageSize,
-        imageRotation: imageRotation,
-        inputImageFormat: inputImageFormat,
-        planeData: planeData,
-      );
-      
-      return InputImage.fromBytes(
-        bytes: bytes,
-        inputImageData: inputImageData,
-      );
+      return null;
     } catch (e) {
       print('❌ Error converting camera image: $e');
       return null;
@@ -259,13 +254,13 @@ class _RealtimeFaceDetectionScreenState extends State<RealtimeFaceDetectionScree
       color = Colors.orange;
     } else {
       // ตรวจสอบดวงตา
-      final leftEye = face.landmarks[FaceLandmarkType.leftEye];
-      final rightEye = face.landmarks[FaceLandmarkType.rightEye];
+      final leftEye = face.leftEyeOpenProbability;
+      final rightEye = face.rightEyeOpenProbability;
       
-      if (face.leftEyeOpenProbability != null && face.leftEyeOpenProbability! < 0.5) {
+      if (leftEye != null && leftEye < 0.5) {
         message = "กรุณาลืมตา";
         color = Colors.orange;
-      } else if (face.rightEyeOpenProbability != null && face.rightEyeOpenProbability! < 0.5) {
+      } else if (rightEye != null && rightEye < 0.5) {
         message = "กรุณาลืมตา";
         color = Colors.orange;
       } else {

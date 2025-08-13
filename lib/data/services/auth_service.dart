@@ -1,365 +1,474 @@
-// lib/data/services/face_service.dart
+// lib/data/services/auth_service.dart
 import 'dart:convert';
-import 'dart:math' as math;
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:myproject2/data/services/auth_service.dart';
+import 'package:myproject2/data/models/user_model.dart';
+import 'package:myproject2/data/models/class_model.dart';
+import 'dart:math' as Math;
 
-class FaceService {
+class AuthService {
   final SupabaseClient _supabase = Supabase.instance.client;
-  final AuthService _authService = AuthService();
 
-  // ==================== Face Embedding Management ====================
+  // ==================== Authentication ====================
+  
+  Future<void> signUpWithEmailPassword(String email, String password) async {
+    try {
+      final response = await _supabase.auth.signUp(
+        email: email,
+        password: password,
+      );
+      
+      if (response.user == null) {
+        throw Exception('Failed to create account');
+      }
+    } catch (e) {
+      throw Exception('Registration failed: $e');
+    }
+  }
+
+  Future<void> signInWithEmailPassword(String email, String password) async {
+    try {
+      final response = await _supabase.auth.signInWithPassword(
+        email: email,
+        password: password,
+      );
+      
+      if (response.user == null) {
+        throw Exception('Login failed');
+      }
+    } catch (e) {
+      throw Exception('Login failed: $e');
+    }
+  }
+
+  Future<void> signOut() async {
+    try {
+      await _supabase.auth.signOut();
+    } catch (e) {
+      throw Exception('Logout failed: $e');
+    }
+  }
+
+  String? getCurrentUserEmail() {
+    return _supabase.auth.currentUser?.email;
+  }
+
+  // ==================== User Profile ====================
+  
+  Future<Map<String, dynamic>> checkUserProfile() async {
+    try {
+      final user = _supabase.auth.currentUser;
+      if (user == null) {
+        return {'exists': false, 'userType': null};
+      }
+
+      final response = await _supabase
+          .from('users')
+          .select('user_type')
+          .eq('email', user.email!)
+          .maybeSingle();
+
+      if (response == null) {
+        return {'exists': false, 'userType': null};
+      }
+
+      return {'exists': true, 'userType': response['user_type']};
+    } catch (e) {
+      throw Exception('Error checking user profile: $e');
+    }
+  }
+
+  Future<void> saveUserProfile({
+    required String fullName,
+    required String schoolId,
+    required String userType,
+  }) async {
+    try {
+      final user = _supabase.auth.currentUser;
+      if (user == null) {
+        throw Exception('No authenticated user');
+      }
+
+      await _supabase.from('users').upsert({
+        'email': user.email,
+        'full_name': fullName,
+        'school_id': schoolId,
+        'user_type': userType,
+        'created_at': DateTime.now().toIso8601String(),
+      });
+    } catch (e) {
+      throw Exception('Failed to save user profile: $e');
+    }
+  }
+
+  Future<Map<String, dynamic>?> getUserProfile() async {
+    try {
+      final user = _supabase.auth.currentUser;
+      if (user == null) return null;
+
+      final response = await _supabase
+          .from('users')
+          .select()
+          .eq('email', user.email!)
+          .maybeSingle();
+
+      return response;
+    } catch (e) {
+      throw Exception('Error getting user profile: $e');
+    }
+  }
+
+  // ==================== Class Management ====================
+  
+  Future<List<Map<String, dynamic>>> getTeacherClasses() async {
+    try {
+      final user = _supabase.auth.currentUser;
+      if (user == null) throw Exception('No authenticated user');
+
+      final response = await _supabase
+          .from('classes')
+          .select()
+          .eq('teacher_email', user.email!)
+          .order('created_at', ascending: false);
+
+      return List<Map<String, dynamic>>.from(response);
+    } catch (e) {
+      throw Exception('Error getting teacher classes: $e');
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> getStudentClasses() async {
+    try {
+      final user = _supabase.auth.currentUser;
+      if (user == null) throw Exception('No authenticated user');
+
+      final response = await _supabase
+          .from('class_students')
+          .select('''
+            class_id,
+            joined_at,
+            classes!inner(
+              class_id,
+              class_name,
+              teacher_email,
+              schedule,
+              room
+            )
+          ''')
+          .eq('student_email', user.email!)
+          .order('joined_at', ascending: false);
+
+      return response.map<Map<String, dynamic>>((item) {
+        final classInfo = item['classes'];
+        return {
+          'id': classInfo['class_id'],
+          'name': classInfo['class_name'],
+          'teacher': classInfo['teacher_email'],
+          'schedule': classInfo['schedule'],
+          'room': classInfo['room'],
+          'joinedDate': DateTime.parse(item['joined_at']),
+          'isFavorite': false,
+        };
+      }).toList();
+    } catch (e) {
+      throw Exception('Error getting student classes: $e');
+    }
+  }
+
+  Future<bool> checkClassExists(String classId) async {
+    try {
+      final response = await _supabase
+          .from('classes')
+          .select('class_id')
+          .eq('class_id', classId)
+          .maybeSingle();
+
+      return response != null;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  Future<void> createClass({
+    required String classId,
+    required String className,
+    required String schedule,
+    required String room,
+  }) async {
+    try {
+      final user = _supabase.auth.currentUser;
+      if (user == null) throw Exception('No authenticated user');
+
+      // Generate random invite code
+      final inviteCode = _generateInviteCode();
+
+      await _supabase.from('classes').insert({
+        'class_id': classId,
+        'class_name': className,
+        'teacher_email': user.email,
+        'schedule': schedule,
+        'room': room,
+        'invite_code': inviteCode,
+        'created_at': DateTime.now().toIso8601String(),
+      });
+    } catch (e) {
+      throw Exception('Failed to create class: $e');
+    }
+  }
+
+  Future<void> updateClass({
+    required String classId,
+    required String className,
+    required String schedule,
+    required String room,
+  }) async {
+    try {
+      await _supabase
+          .from('classes')
+          .update({
+            'class_name': className,
+            'schedule': schedule,
+            'room': room,
+            'updated_at': DateTime.now().toIso8601String(),
+          })
+          .eq('class_id', classId);
+    } catch (e) {
+      throw Exception('Failed to update class: $e');
+    }
+  }
+
+  Future<void> deleteClass(String classId) async {
+    try {
+      await _supabase
+          .from('classes')
+          .delete()
+          .eq('class_id', classId);
+    } catch (e) {
+      throw Exception('Failed to delete class: $e');
+    }
+  }
+
+  Future<Map<String, dynamic>> getClassDetail(String classId) async {
+    try {
+      final response = await _supabase
+          .from('classes')
+          .select()
+          .eq('class_id', classId)
+          .single();
+
+      return response;
+    } catch (e) {
+      throw Exception('Error getting class detail: $e');
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> getClassStudents(String classId) async {
+    try {
+      final response = await _supabase
+          .from('class_students')
+          .select('''
+            student_email,
+            joined_at,
+            users!inner(
+              email,
+              full_name,
+              school_id
+            )
+          ''')
+          .eq('class_id', classId)
+          .order('joined_at');
+
+      return List<Map<String, dynamic>>.from(response);
+    } catch (e) {
+      throw Exception('Error getting class students: $e');
+    }
+  }
+
+  Future<Map<String, dynamic>?> getClassByInviteCode(String inviteCode) async {
+    try {
+      final response = await _supabase
+          .from('classes')
+          .select()
+          .eq('invite_code', inviteCode)
+          .maybeSingle();
+
+      return response;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  Future<void> joinClass({
+    required String classId,
+    required String studentEmail,
+  }) async {
+    try {
+      await _supabase.from('class_students').insert({
+        'class_id': classId,
+        'student_email': studentEmail,
+        'joined_at': DateTime.now().toIso8601String(),
+      });
+    } catch (e) {
+      throw Exception('Failed to join class: $e');
+    }
+  }
+
+  Future<void> leaveClass({
+    required String classId,
+    required String studentEmail,
+  }) async {
+    try {
+      await _supabase
+          .from('class_students')
+          .delete()
+          .eq('class_id', classId)
+          .eq('student_email', studentEmail);
+    } catch (e) {
+      throw Exception('Failed to leave class: $e');
+    }
+  }
+
+  // ==================== Face Recognition ====================
   
   Future<bool> hasFaceEmbedding() async {
     try {
-      final userEmail = _authService.getCurrentUserEmail();
-      if (userEmail == null) return false;
+      final user = _supabase.auth.currentUser;
+      if (user == null) return false;
 
-      final schoolId = await _getSchoolId(userEmail);
+      final userProfile = await getUserProfile();
+      if (userProfile == null) return false;
+
+      final schoolId = userProfile['school_id'];
       if (schoolId == null) return false;
 
       final response = await _supabase
           .from('student_face_embeddings')
-          .select('id, face_quality, created_at')
+          .select('id')
           .eq('student_id', schoolId)
           .eq('is_active', true)
           .maybeSingle();
 
       return response != null;
     } catch (e) {
-      print('Error checking face embedding: $e');
       return false;
     }
   }
 
   Future<void> saveFaceEmbedding(List<double> embedding) async {
     try {
-      _validateEmbedding(embedding);
-      
-      final userEmail = _authService.getCurrentUserEmail();
-      if (userEmail == null) {
-        throw FaceServiceException('No authenticated user');
-      }
+      final user = _supabase.auth.currentUser;
+      if (user == null) throw Exception('No authenticated user');
 
-      final schoolId = await _getSchoolId(userEmail);
-      if (schoolId == null) {
-        throw FaceServiceException('School ID not found');
-      }
+      final userProfile = await getUserProfile();
+      if (userProfile == null) throw Exception('User profile not found');
+
+      final schoolId = userProfile['school_id'];
+      if (schoolId == null) throw Exception('School ID not found');
 
       final embeddingJson = jsonEncode(embedding);
       final quality = _calculateEmbeddingQuality(embedding);
-      final timestamp = DateTime.now().toIso8601String();
 
-      // Check if embedding already exists
-      final existing = await _getExistingEmbedding(schoolId);
-
-      if (existing != null) {
-        await _updateEmbedding(schoolId, embeddingJson, quality, timestamp);
-      } else {
-        await _insertEmbedding(schoolId, embeddingJson, quality, timestamp);
-      }
-
-      // Verify save was successful
-      await _verifyEmbeddingSaved(schoolId);
-      
+      await _supabase.from('student_face_embeddings').upsert({
+        'student_id': schoolId,
+        'face_embedding_json': embeddingJson,
+        'face_quality': quality,
+        'is_active': true,
+        'created_at': DateTime.now().toIso8601String(),
+        'updated_at': DateTime.now().toIso8601String(),
+      });
     } catch (e) {
-      throw FaceServiceException(_getFriendlyErrorMessage(e.toString()));
+      throw Exception('Failed to save face embedding: $e');
     }
   }
 
   Future<void> deactivateFaceEmbedding() async {
     try {
-      final userEmail = _authService.getCurrentUserEmail();
-      if (userEmail == null) {
-        throw FaceServiceException('No authenticated user');
-      }
+      final user = _supabase.auth.currentUser;
+      if (user == null) throw Exception('No authenticated user');
 
-      final schoolId = await _getSchoolId(userEmail);
-      if (schoolId == null) {
-        throw FaceServiceException('School ID not found');
-      }
+      final userProfile = await getUserProfile();
+      if (userProfile == null) throw Exception('User profile not found');
+
+      final schoolId = userProfile['school_id'];
+      if (schoolId == null) throw Exception('School ID not found');
 
       await _supabase
           .from('student_face_embeddings')
           .update({
             'is_active': false,
-            'updated_at': DateTime.now().toIso8601String()
+            'updated_at': DateTime.now().toIso8601String(),
           })
           .eq('student_id', schoolId);
-          
     } catch (e) {
-      throw FaceServiceException('Failed to deactivate face embedding: $e');
+      throw Exception('Failed to deactivate face embedding: $e');
     }
   }
 
-  Future<Map<String, dynamic>?> getFaceEmbeddingDetails() async {
+  Future<bool> verifyFace(String studentId, List<double> capturedEmbedding) async {
     try {
-      final userEmail = _authService.getCurrentUserEmail();
-      if (userEmail == null) return null;
-
-      final schoolId = await _getSchoolId(userEmail);
-      if (schoolId == null) return null;
-
-      return await _supabase
-          .from('student_face_embeddings')
-          .select('id, face_quality, created_at, updated_at')
-          .eq('student_id', schoolId)
-          .eq('is_active', true)
-          .maybeSingle();
-    } catch (e) {
-      print('Error getting face embedding details: $e');
-      return null;
-    }
-  }
-
-  Future<List<double>?> getFaceEmbedding() async {
-    try {
-      final userEmail = _authService.getCurrentUserEmail();
-      if (userEmail == null) return null;
-
-      final schoolId = await _getSchoolId(userEmail);
-      if (schoolId == null) return null;
-
       final response = await _supabase
           .from('student_face_embeddings')
           .select('face_embedding_json')
-          .eq('student_id', schoolId)
+          .eq('student_id', studentId)
           .eq('is_active', true)
           .maybeSingle();
-      
-      if (response?['face_embedding_json'] != null) {
-        final List<dynamic> jsonList = jsonDecode(response['face_embedding_json']);
-        final embedding = jsonList.map((item) => item as double).toList();
-        
-        if (embedding.length != 128) {
-          print('Warning: Invalid embedding size: ${embedding.length}');
-          return null;
-        }
-        
-        return embedding;
-      }
-      
-      return null;
-    } catch (e) {
-      print('Error fetching face embedding: $e');
-      return null;
-    }
-  }
 
-  // ==================== Face Verification ====================
-  
-  Future<bool> verifyFace(String studentId, List<double> capturedEmbedding, {double threshold = 0.7}) async {
-    try {
-      final storedEmbedding = await _getStoredEmbedding(studentId);
-      if (storedEmbedding == null) return false;
-      
-      if (storedEmbedding.length != capturedEmbedding.length) {
-        print('Embedding size mismatch: ${storedEmbedding.length} vs ${capturedEmbedding.length}');
-        return false;
-      }
-      
-      final similarity = _compareFaceEmbeddings(capturedEmbedding, storedEmbedding);
-      
-      if (similarity == -2.0) {
-        print('Error in similarity calculation');
-        return false;
-      }
-      
-      final isVerified = similarity > threshold;
-      print('Face verification: ${isVerified ? "PASSED" : "FAILED"} (similarity: ${similarity.toStringAsFixed(4)})');
-      
-      return isVerified;
+      if (response == null) return false;
+
+      final storedEmbeddingJson = response['face_embedding_json'];
+      final storedEmbedding = List<double>.from(jsonDecode(storedEmbeddingJson));
+
+      final similarity = _calculateCosineSimilarity(capturedEmbedding, storedEmbedding);
+      return similarity > 0.7; // Threshold for face verification
     } catch (e) {
-      print('Error verifying face: $e');
       return false;
     }
   }
 
-  double _compareFaceEmbeddings(List<double> embedding1, List<double> embedding2) {
-    try {
-      if (embedding1.length != embedding2.length) {
-        throw Exception('Embeddings have different dimensions');
-      }
-      
-      // Validate embeddings
-      for (int i = 0; i < embedding1.length; i++) {
-        if (!embedding1[i].isFinite || !embedding2[i].isFinite) {
-          throw Exception('Invalid embedding values detected');
-        }
-      }
-      
-      double dotProduct = 0.0;
-      for (int i = 0; i < embedding1.length; i++) {
-        dotProduct += embedding1[i] * embedding2[i];
-      }
-      
-      // For normalized embeddings, cosine similarity = dot product
-      return dotProduct.clamp(-1.0, 1.0);
-    } catch (e) {
-      print('Error comparing face embeddings: $e');
-      return -2.0; // Error value
-    }
-  }
-
-  // ==================== Private Helper Methods ====================
+  // ==================== Helper Methods ====================
   
-  Future<String?> _getSchoolId(String userEmail) async {
-    final userResponse = await _supabase
-        .from('users')
-        .select('school_id')
-        .eq('email', userEmail)
-        .maybeSingle();
-
-    final schoolId = userResponse?['school_id']?.toString();
-    return (schoolId?.isNotEmpty == true) ? schoolId : null;
-  }
-
-  Future<Map<String, dynamic>?> _getExistingEmbedding(String schoolId) async {
-    return await _supabase
-        .from('student_face_embeddings')
-        .select('id, student_id, is_active, created_at')
-        .eq('student_id', schoolId)
-        .maybeSingle();
-  }
-
-  Future<List<double>?> _getStoredEmbedding(String studentId) async {
-    final response = await _supabase
-        .from('student_face_embeddings')
-        .select('face_embedding_json')
-        .eq('student_id', studentId)
-        .eq('is_active', true)
-        .maybeSingle();
+  String _generateInviteCode() {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    final random = DateTime.now().millisecondsSinceEpoch;
+    String code = '';
     
-    if (response?['face_embedding_json'] == null) return null;
-    
-    final List<dynamic> jsonList = jsonDecode(response ['face_embedding_json']);
-    return jsonList.map((item) => item as double).toList();
-  }
-
-  Future<void> _updateEmbedding(String schoolId, String embeddingJson, double quality, String timestamp) async {
-    final updateData = {
-      'face_embedding_json': embeddingJson,
-      'face_quality': quality,
-      'is_active': true,
-      'updated_at': timestamp,
-    };
-
-    await _supabase
-        .from('student_face_embeddings')
-        .update(updateData)
-        .eq('student_id', schoolId);
-  }
-
-  Future<void> _insertEmbedding(String schoolId, String embeddingJson, double quality, String timestamp) async {
-    final insertData = {
-      'student_id': schoolId,
-      'face_embedding_json': embeddingJson,
-      'face_quality': quality,
-      'is_active': true,
-      'created_at': timestamp,
-      'updated_at': timestamp,
-    };
-
-    await _supabase
-        .from('student_face_embeddings')
-        .insert(insertData);
-  }
-
-  Future<void> _verifyEmbeddingSaved(String schoolId) async {
-    final finalCheck = await _supabase
-        .from('student_face_embeddings')
-        .select('id, student_id, face_quality, is_active')
-        .eq('student_id', schoolId)
-        .eq('is_active', true)
-        .maybeSingle();
-
-    if (finalCheck == null) {
-      throw Exception('Failed to verify saved face embedding');
-    }
-  }
-
-  void _validateEmbedding(List<double> embedding) {
-    if (embedding.isEmpty) {
-      throw Exception('Empty embedding provided');
+    for (int i = 0; i < 6; i++) {
+      code += chars[(random + i) % chars.length];
     }
     
-    if (embedding.length != 128) {
-      throw Exception('Invalid embedding size: ${embedding.length}, expected: 128');
-    }
-
-    // Check for invalid values
-    for (int i = 0; i < embedding.length; i++) {
-      if (!embedding[i].isFinite) {
-        throw Exception('Invalid embedding values detected at index $i');
-      }
-    }
+    return code;
   }
 
   double _calculateEmbeddingQuality(List<double> embedding) {
-    try {
-      double sum = 0.0;
-      double sumSquares = 0.0;
-      double minVal = embedding[0];
-      double maxVal = embedding[0];
-      
-      for (var value in embedding) {
-        sum += value;
-        sumSquares += value * value;
-        if (value < minVal) minVal = value;
-        if (value > maxVal) maxVal = value;
-      }
-      
-      final mean = sum / embedding.length;
-      final variance = (sumSquares / embedding.length) - (mean * mean);
-      final stdDev = math.sqrt(variance);
-      final range = maxVal - minVal;
-      
-      // Quality score based on distribution and range
-      double quality = 0.5; // Base quality
-      
-      // Good standard deviation indicates good feature distribution
-      if (stdDev > 0.1 && stdDev < 1.0) {
-        quality += 0.2;
-      }
-      
-      // Good range indicates good feature separation
-      if (range > 0.5 && range < 3.0) {
-        quality += 0.2;
-      }
-      
-      // Penalize if mean is too far from 0 (should be normalized)
-      if (mean.abs() < 0.1) {
-        quality += 0.1;
-      }
-      
-      return quality.clamp(0.0, 1.0);
-    } catch (e) {
-      print('Warning: Failed to calculate embedding quality: $e');
-      return 0.5; // Default quality
+    // Simple quality calculation based on variance
+    double sum = embedding.reduce((a, b) => a + b);
+    double mean = sum / embedding.length;
+    
+    double variance = 0;
+    for (double value in embedding) {
+      variance += (value - mean) * (value - mean);
     }
+    variance /= embedding.length;
+    
+    return (variance * 10).clamp(0.0, 1.0);
   }
 
-  String _getFriendlyErrorMessage(String error) {
-    if (error.contains('No authenticated user')) {
-      return 'กรุณาเข้าสู่ระบบใหม่';
-    } else if (error.contains('School ID not found')) {
-      return 'ไม่พบข้อมูลรหัสนักเรียน กรุณาติดต่อผู้ดูแลระบบ';
-    } else if (error.contains('Invalid embedding')) {
-      return 'ข้อมูลใบหน้าไม่ถูกต้อง กรุณาลองถ่ายรูปใหม่';
-    } else if (error.contains('connection') || error.contains('network')) {
-      return 'ปัญหาการเชื่อมต่อ กรุณาตรวจสอบอินเทอร์เน็ต';
+  double _calculateCosineSimilarity(List<double> a, List<double> b) {
+    if (a.length != b.length) return 0.0;
+    
+    double dotProduct = 0.0;
+    double normA = 0.0;
+    double normB = 0.0;
+    
+    for (int i = 0; i < a.length; i++) {
+      dotProduct += a[i] * b[i];
+      normA += a[i] * a[i];
+      normB += b[i] * b[i];
     }
-    return 'ไม่สามารถบันทึกข้อมูลใบหน้าได้: $error';
+    
+    if (normA == 0.0 || normB == 0.0) return 0.0;
+    
+    return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
   }
 }
 
-// ==================== Custom Exception ====================
 
-class FaceServiceException implements Exception {
-  final String message;
-  
-  FaceServiceException(this.message);
-  
-  @override
-  String toString() => 'FaceServiceException: $message';
-}

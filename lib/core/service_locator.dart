@@ -2,7 +2,7 @@
 import 'package:get_it/get_it.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:myproject2/data/services/auth_service.dart';
-import 'package:myproject2/data/services/attendance_service.dart';
+import 'package:myproject2/data/services/attendance_service.dart' hide AuthService;
 import 'package:myproject2/data/services/face_recognition_service.dart';
 import 'package:myproject2/core/constants/app_constants.dart';
 
@@ -50,25 +50,21 @@ void _registerCoreServices() {
   // Authentication Service
   serviceLocator.registerLazySingleton<AuthService>(
     () => AuthService(),
-    dispose: (service) => service.dispose(),
-  );
-  
-  // Face Service
-  serviceLocator.registerLazySingleton<FaceService>(
-    () => FaceService(),
-    dispose: (service) => service.dispose(),
   );
   
   // Face Recognition Service (ML/AI)
   serviceLocator.registerLazySingleton<FaceRecognitionService>(
     () => FaceRecognitionService(),
-    dispose: (service) => service.dispose(),
   );
   
-  // Attendance Service
+  // Simple Attendance Service  
+  serviceLocator.registerLazySingleton<SimpleAttendanceService>(
+    () => SimpleAttendanceService(),
+  );
+  
+  // Main Attendance Service
   serviceLocator.registerLazySingleton<AttendanceService>(
     () => AttendanceService(),
-    dispose: (service) => service.dispose(),
   );
 }
 
@@ -87,18 +83,16 @@ void _registerBusinessServices() {
   // Notification Service
   serviceLocator.registerLazySingleton<NotificationService>(
     () => NotificationService(),
-    dispose: (service) => service.dispose(),
   );
   
-  // Analytics Service
+  // Analytics Service (conditional)
   if (AppConstants.enableAnalytics) {
     serviceLocator.registerLazySingleton<AnalyticsService>(
       () => AnalyticsService(),
-      dispose: (service) => service.dispose(),
     );
   }
   
-  // Crash Reporting Service
+  // Crash Reporting Service (conditional)
   if (AppConstants.enableCrashReporting) {
     serviceLocator.registerLazySingleton<CrashReportingService>(
       () => CrashReportingService(),
@@ -126,7 +120,6 @@ void _registerUtilityServices() {
   // Network Service
   serviceLocator.registerLazySingleton<NetworkService>(
     () => NetworkService(),
-    dispose: (service) => service.dispose(),
   );
   
   // Permission Service
@@ -139,7 +132,8 @@ void _registerUtilityServices() {
 void _verifyServiceRegistration() {
   final criticalServices = [
     AuthService,
-    FaceService,
+    FaceRecognitionService,
+    SimpleAttendanceService,
     AttendanceService,
     NavigationService,
     StorageService,
@@ -159,18 +153,50 @@ void _verifyServiceRegistration() {
 Future<void> disposeServiceLocator() async {
   try {
     print('🧹 Disposing service locator...');
-    await serviceLocator.reset(dispose: true);
+    
+    // Manually dispose services that need cleanup
+    await _disposeServicesManually();
+    
+    // Reset GetIt instance
+    await serviceLocator.reset();
+    
     print('✅ Service locator disposed');
   } catch (e) {
     print('❌ Error disposing service locator: $e');
   }
 }
 
+/// Manually dispose services that need cleanup
+Future<void> _disposeServicesManually() async {
+  try {
+    // Dispose FaceRecognitionService
+    if (serviceLocator.isRegistered<FaceRecognitionService>()) {
+      final faceService = serviceLocator<FaceRecognitionService>();
+      await faceService.dispose();
+    }
+    
+    // Dispose other services as needed
+    if (serviceLocator.isRegistered<NetworkService>()) {
+      final networkService = serviceLocator<NetworkService>();
+      networkService.dispose();
+    }
+    
+    if (serviceLocator.isRegistered<NotificationService>()) {
+      final notificationService = serviceLocator<NotificationService>();
+      notificationService.dispose();
+    }
+    
+  } catch (e) {
+    print('⚠️ Error in manual service disposal: $e');
+  }
+}
+
 // ==================== Service Implementations ====================
 
 class NavigationService {
-  // TODO: Implement navigation service
-  void dispose() {}
+  void dispose() {
+    // TODO: Implement navigation cleanup if needed
+  }
 }
 
 class StorageService {
@@ -187,12 +213,28 @@ class StorageService {
     return _prefs.getString(AppConstants.userEmailKey);
   }
   
+  Future<void> setUserId(String userId) async {
+    await _prefs.setString(AppConstants.userIdKey, userId);
+  }
+  
+  String? getUserId() {
+    return _prefs.getString(AppConstants.userIdKey);
+  }
+  
   Future<void> setUserType(String userType) async {
     await _prefs.setString(AppConstants.userTypeKey, userType);
   }
   
   String? getUserType() {
     return _prefs.getString(AppConstants.userTypeKey);
+  }
+  
+  Future<void> setAuthToken(String token) async {
+    await _prefs.setString(AppConstants.tokenKey, token);
+  }
+  
+  String? getAuthToken() {
+    return _prefs.getString(AppConstants.tokenKey);
   }
   
   // App Settings
@@ -204,55 +246,154 @@ class StorageService {
     return _prefs.getString(AppConstants.themeKey) ?? 'system';
   }
   
+  Future<void> setLanguage(String language) async {
+    await _prefs.setString(AppConstants.languageKey, language);
+  }
+  
+  String getLanguage() {
+    return _prefs.getString(AppConstants.languageKey) ?? 'en';
+  }
+  
   // Clear all data
   Future<void> clearAll() async {
     await _prefs.clear();
   }
   
-  void dispose() {}
+  // Clear user data only
+  Future<void> clearUserData() async {
+    final keys = [
+      AppConstants.tokenKey,
+      AppConstants.userIdKey,
+      AppConstants.userEmailKey,
+      AppConstants.userTypeKey,
+    ];
+    
+    for (final key in keys) {
+      await _prefs.remove(key);
+    }
+  }
+  
+  void dispose() {
+    // SharedPreferences doesn't need manual disposal
+  }
 }
 
 class NotificationService {
-  // TODO: Implement push notifications
-  void dispose() {}
+  void dispose() {
+    // TODO: Implement push notification cleanup
+  }
+  
+  Future<void> initialize() async {
+    // TODO: Initialize push notifications
+  }
+  
+  Future<void> showLocalNotification({
+    required String title,
+    required String body,
+  }) async {
+    // TODO: Show local notification
+  }
+  
+  Future<void> scheduleNotification({
+    required String title,
+    required String body,
+    required DateTime scheduledDate,
+  }) async {
+    // TODO: Schedule notification
+  }
 }
 
 class AnalyticsService {
-  // TODO: Implement analytics tracking
-  void dispose() {}
+  void dispose() {
+    // TODO: Implement analytics cleanup
+  }
+  
+  void trackEvent(String eventName, {Map<String, dynamic>? parameters}) {
+    if (AppConstants.enableAnalytics) {
+      // TODO: Track analytics event
+      print('📊 Analytics: $eventName ${parameters ?? ''}');
+    }
+  }
+  
+  void setUserId(String userId) {
+    if (AppConstants.enableAnalytics) {
+      // TODO: Set analytics user ID
+      print('📊 Analytics: Set user ID $userId');
+    }
+  }
+  
+  void setUserProperty(String name, String value) {
+    if (AppConstants.enableAnalytics) {
+      // TODO: Set analytics user property
+      print('📊 Analytics: Set user property $name = $value');
+    }
+  }
 }
 
 class CrashReportingService {
-  // TODO: Implement crash reporting
+  void logError(String message, dynamic error, StackTrace? stackTrace) {
+    if (AppConstants.enableCrashReporting) {
+      // TODO: Send to crash reporting service
+      print('💥 Crash Report: $message');
+      if (error != null) print('Error: $error');
+      if (stackTrace != null) print('StackTrace: $stackTrace');
+    }
+  }
+  
+  void setUserId(String userId) {
+    if (AppConstants.enableCrashReporting) {
+      // TODO: Set crash reporting user ID
+      print('💥 Crash Report: Set user ID $userId');
+    }
+  }
+  
+  void setCustomKey(String key, String value) {
+    if (AppConstants.enableCrashReporting) {
+      // TODO: Set custom key for crash reporting
+      print('💥 Crash Report: Set custom key $key = $value');
+    }
+  }
 }
 
 class LoggerService {
-  void logInfo(String message) {
+  void logInfo(String message, {Map<String, dynamic>? extra}) {
     if (AppConstants.enableDebugLogging) {
       print('ℹ️ INFO: $message');
+      if (extra != null) print('Extra: $extra');
     }
   }
   
-  void logWarning(String message) {
+  void logWarning(String message, {Map<String, dynamic>? extra}) {
     if (AppConstants.enableDebugLogging) {
       print('⚠️ WARNING: $message');
+      if (extra != null) print('Extra: $extra');
     }
   }
   
-  void logError(String message, {Object? error, StackTrace? stackTrace}) {
+  void logError(String message, {dynamic error, StackTrace? stackTrace, Map<String, dynamic>? extra}) {
     if (AppConstants.enableDebugLogging) {
       print('❌ ERROR: $message');
       if (error != null) print('Error details: $error');
       if (stackTrace != null) print('Stack trace: $stackTrace');
+      if (extra != null) print('Extra: $extra');
     }
     
-    // In production, send to crash reporting service
+    // Send to crash reporting in production
     if (AppConstants.enableCrashReporting && serviceLocator.isRegistered<CrashReportingService>()) {
-      // serviceLocator<CrashReportingService>().logError(message, error, stackTrace);
+      serviceLocator<CrashReportingService>().logError(message, error, stackTrace);
     }
   }
   
-  void dispose() {}
+  void logDebug(String message, {Map<String, dynamic>? extra}) {
+    if (AppConstants.enableDebugLogging && AppConstants.isDevelopment) {
+      print('🐛 DEBUG: $message');
+      if (extra != null) print('Extra: $extra');
+    }
+  }
+  
+  void dispose() {
+    // Logger doesn't need manual disposal
+  }
 }
 
 class ValidationService {
@@ -272,6 +413,10 @@ class ValidationService {
     return AppConstants.isValidSchoolId(schoolId);
   }
   
+  bool isValidInviteCode(String inviteCode) {
+    return AppConstants.isValidInviteCode(inviteCode);
+  }
+  
   String? validateRequired(String? value, String fieldName) {
     if (value == null || value.trim().isEmpty) {
       return '$fieldName is required';
@@ -280,35 +425,126 @@ class ValidationService {
   }
   
   String? validateEmail(String? value) {
-    if (!isValidEmail(value ?? '')) {
+    if (value == null || value.trim().isEmpty) {
+      return 'Email is required';
+    }
+    if (!isValidEmail(value.trim())) {
       return 'Please enter a valid email address';
     }
     return null;
   }
   
   String? validatePassword(String? value) {
-    if (!isValidPassword(value ?? '')) {
+    if (value == null || value.isEmpty) {
+      return 'Password is required';
+    }
+    if (!isValidPassword(value)) {
       return 'Password must be at least 6 characters long';
     }
     return null;
   }
   
-  void dispose() {}
+  String? validateConfirmPassword(String? value, String? originalPassword) {
+    if (value == null || value.isEmpty) {
+      return 'Please confirm your password';
+    }
+    if (value != originalPassword) {
+      return 'Passwords do not match';
+    }
+    return null;
+  }
+  
+  String? validateClassId(String? value) {
+    if (value == null || value.trim().isEmpty) {
+      return 'Class ID is required';
+    }
+    if (!isValidClassId(value.trim())) {
+      return 'Invalid class ID format';
+    }
+    return null;
+  }
+  
+  String? validateSchoolId(String? value) {
+    if (value == null || value.trim().isEmpty) {
+      return 'School ID is required';
+    }
+    if (!isValidSchoolId(value.trim())) {
+      return 'Invalid school ID format';
+    }
+    return null;
+  }
+  
+  void dispose() {
+    // Validation service doesn't need disposal
+  }
 }
 
 class FileService {
-  // TODO: Implement file operations
-  void dispose() {}
+  void dispose() {
+    // TODO: Cleanup file operations if needed
+  }
+  
+  Future<String> getTemporaryDirectoryPath() async {
+    // TODO: Implement using path_provider
+    throw UnimplementedError('getTemporaryDirectoryPath not implemented');
+  }
+  
+  Future<String> getApplicationDocumentsDirectoryPath() async {
+    // TODO: Implement using path_provider
+    throw UnimplementedError('getApplicationDocumentsDirectoryPath not implemented');
+  }
+  
+  Future<bool> deleteFile(String filePath) async {
+    // TODO: Implement file deletion
+    throw UnimplementedError('deleteFile not implemented');
+  }
+  
+  Future<bool> fileExists(String filePath) async {
+    // TODO: Implement file existence check
+    throw UnimplementedError('fileExists not implemented');
+  }
 }
 
 class NetworkService {
-  // TODO: Implement network connectivity checking
-  void dispose() {}
+  void dispose() {
+    // TODO: Cleanup network connections if needed
+  }
+  
+  Future<bool> hasInternetConnection() async {
+    // TODO: Implement internet connectivity check
+    throw UnimplementedError('hasInternetConnection not implemented');
+  }
+  
+  Stream<bool> get connectivityStream {
+    // TODO: Implement connectivity stream
+    throw UnimplementedError('connectivityStream not implemented');
+  }
 }
 
 class PermissionService {
-  // TODO: Implement permission handling
-  void dispose() {}
+  void dispose() {
+    // Permission service doesn't need disposal
+  }
+  
+  Future<bool> requestCameraPermission() async {
+    // TODO: Implement camera permission request
+    throw UnimplementedError('requestCameraPermission not implemented');
+  }
+  
+  Future<bool> requestStoragePermission() async {
+    // TODO: Implement storage permission request
+    throw UnimplementedError('requestStoragePermission not implemented');
+  }
+  
+  Future<bool> requestNotificationPermission() async {
+    // TODO: Implement notification permission request
+    throw UnimplementedError('requestNotificationPermission not implemented');
+  }
+  
+  Future<bool> hasPermission(String permission) async {
+    // TODO: Implement permission check
+    throw UnimplementedError('hasPermission not implemented');
+  }
 }
 
 // ==================== Helper Extensions ====================
@@ -323,24 +559,14 @@ extension ServiceLocatorExtensions on GetIt {
       return false;
     }
   }
-}
-
-// Add dispose methods to existing services (extend them)
-extension AuthServiceExtension on AuthService {
-  void dispose() {
-    // Cleanup if needed
-  }
-}
-
-extension FaceServiceExtension on FaceService {
-  void dispose() {
-    // Cleanup if needed
-  }
-}
-
-extension AttendanceServiceExtension on AttendanceService {
-  void dispose() {
-    // Cleanup if needed
+  
+  /// Get service safely (returns null if not registered)
+  T? getSafe<T extends Object>({String? instanceName}) {
+    try {
+      return get<T>(instanceName: instanceName);
+    } catch (e) {
+      return null;
+    }
   }
 }
 
@@ -354,3 +580,23 @@ class ServiceLocatorException implements Exception {
   @override
   String toString() => 'ServiceLocatorException: $message';
 }
+
+// ==================== Convenience Methods ====================
+
+/// Get auth service instance
+AuthService get authService => serviceLocator<AuthService>();
+
+/// Get face recognition service instance
+FaceRecognitionService get faceRecognitionService => serviceLocator<FaceRecognitionService>();
+
+/// Get attendance service instance
+SimpleAttendanceService get simpleAttendanceService => serviceLocator<SimpleAttendanceService>();
+
+/// Get storage service instance
+StorageService get storageService => serviceLocator<StorageService>();
+
+/// Get logger service instance
+LoggerService get loggerService => serviceLocator<LoggerService>();
+
+/// Get validation service instance
+ValidationService get validationService => serviceLocator<ValidationService>();

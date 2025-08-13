@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:myproject2/data/models/attendance_record_model.dart';
 import 'package:myproject2/data/models/attendance_session_model.dart';
 import 'package:myproject2/data/services/attendance_service.dart';
-import 'package:myproject2/data/services/auth_service.dart';
 import 'package:myproject2/presentation/screens/face/realtime_face_detection_screen.dart';
 
 class UpdatedStudentAttendanceScreen extends StatefulWidget {
