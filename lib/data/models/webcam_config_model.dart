@@ -17,13 +17,13 @@ class WebcamConfigModel {
   });
 
   /// URL สำหรับดู video stream
-  String get streamUrl => 'http://192.168.1.7:8000/video';
+  String get streamUrl => 'http://192.168.1.9:8000/video';
   
   /// URL สำหรับถ่ายภาพ
-  String get captureUrl => 'http://192.168.1.7:8000/photo.jpg';
+  String get captureUrl => 'http://192.168.1.9:8000/photo.jpg';
   
   /// URL สำหรับดู video ใน browser
-  String get browserUrl => 'http://192.168.1.7:8080';
+  String get browserUrl => 'http://192.168.1.9:8080';
   
   factory WebcamConfigModel.fromJson(Map<String, dynamic> json) {
     return WebcamConfigModel(
