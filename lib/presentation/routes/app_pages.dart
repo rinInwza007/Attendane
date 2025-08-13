@@ -38,7 +38,7 @@ class AppPages {
     ),
     GetPage(
       name: RouteConstants.studentProfile,
-      page: () => const Profile(),
+      page: () => const UpdatedProfile(),
       bindings: [AuthBinding(), ClassBinding()],
     ),
     GetPage(

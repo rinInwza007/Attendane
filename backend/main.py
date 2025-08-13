@@ -5,7 +5,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 import uvicorn
 from typing import Optional, List, Dict
 import aiohttp
-import cv2
+import cv2  
 import numpy as np
 from datetime import datetime, timedelta
 import face_recognition
@@ -40,7 +40,7 @@ app.add_middleware(
 
 # Supabase configuration
 SUPABASE_URL = os.getenv("SUPABASE_URL", "https://cykbwnxcvdszxlypzucy.supabase.co")
-SUPABASE_KEY = os.getenv("SUPABASE_KEY", "your-supabase-anon-key")
+SUPABASE_KEY = os.getenv("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImN5a2J3bnhjdmRzenhseXB6dWN5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzIwMDEwMDMsImV4cCI6MjA0NzU3NzAwM30.t51vDsflnqzKVic9tZ_uFpiaS_6RO3J3gOeMJdm0lvo")
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 # Models
