@@ -1,8 +1,8 @@
 // lib/presentation/screens/profile/updated_profile.dart
 import 'package:flutter/material.dart';
 import 'package:myproject2/data/services/auth_service.dart';
-import 'package:myproject2/presentation/screens/attendance/simple_student_attendance_screen.dart';
 import 'package:myproject2/presentation/screens/settings/setting.dart';
+import 'package:myproject2/presentation/screens/attendance/updated_student_attendance_screen.dart';
 import 'package:myproject2/presentation/screens/face/realtime_face_detection_screen.dart';
 
 class UpdatedProfile extends StatefulWidget {
