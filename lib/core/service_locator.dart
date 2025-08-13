@@ -2,7 +2,7 @@
 import 'package:get_it/get_it.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:myproject2/data/services/auth_service.dart';
-import 'package:myproject2/data/services/attendance_service.dart' hide AuthService;
+import 'package:myproject2/data/services/attendance_service.dart'; // ไม่ต้อง hide แล้วเพราะไม่มี AuthService ซ้ำ
 import 'package:myproject2/data/services/face_recognition_service.dart';
 import 'package:myproject2/core/constants/app_constants.dart';
 
@@ -47,7 +47,7 @@ Future<void> _registerExternalDependencies() async {
 
 /// Register core application services
 void _registerCoreServices() {
-  // Authentication Service
+  // Authentication Service (หลัก)
   serviceLocator.registerLazySingleton<AuthService>(
     () => AuthService(),
   );
@@ -57,12 +57,12 @@ void _registerCoreServices() {
     () => FaceRecognitionService(),
   );
   
-  // Simple Attendance Service  
+  // Simple Attendance Service (ใช้สำหรับฟีเจอร์พื้นฐาน)
   serviceLocator.registerLazySingleton<SimpleAttendanceService>(
     () => SimpleAttendanceService(),
   );
   
-  // Main Attendance Service
+  // Full Attendance Service (ใช้สำหรับฟีเจอร์ขั้นสูง)
   serviceLocator.registerLazySingleton<AttendanceService>(
     () => AttendanceService(),
   );
@@ -589,8 +589,11 @@ AuthService get authService => serviceLocator<AuthService>();
 /// Get face recognition service instance
 FaceRecognitionService get faceRecognitionService => serviceLocator<FaceRecognitionService>();
 
-/// Get attendance service instance
+/// Get simple attendance service instance
 SimpleAttendanceService get simpleAttendanceService => serviceLocator<SimpleAttendanceService>();
+
+/// Get full attendance service instance
+AttendanceService get attendanceService => serviceLocator<AttendanceService>();
 
 /// Get storage service instance
 StorageService get storageService => serviceLocator<StorageService>();
