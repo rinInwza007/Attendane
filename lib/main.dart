@@ -4,7 +4,6 @@ import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:myproject2/core/service_locator.dart';
 import 'package:myproject2/core/constants/app_constants.dart';
-import 'package:myproject2/presentation/themes/app_theme.dart';
 import 'package:myproject2/presentation/screens/profile/login_screen.dart';
 
 void main() async {
@@ -67,7 +66,7 @@ class AttendancePlusApp extends StatelessWidget {
       title: AppConstants.appName,
       
       // Use the defined theme
-      theme: AppTheme.lightTheme,
+      //theme: AppTheme.lightTheme,
       
       // Dark theme support (optional)
       // darkTheme: AppTheme.darkTheme,

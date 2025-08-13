@@ -1,14 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:myproject2/presentation/screens/auth/register_screen.dart';
 import 'package:myproject2/presentation/screens/profile/inputdata.dart';
-import 'package:myproject2/presentation/screens/profile/profile.dart';
+import 'package:myproject2/presentation/screens/profile/updated_profile.dart'; // เปลี่ยนจาก profile.dart
 import 'package:myproject2/presentation/screens/profile/profileteachaer.dart';
 import 'package:myproject2/data/services/auth_service.dart';
 import '../../common_widgets/app_button.dart';
 import '../../common_widgets/app_text_field.dart';
 import '../../common_widgets/loading_overlay.dart';
 import '../../common_widgets/error_dialog.dart';
-
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -39,9 +38,9 @@ class _LoginScreenState extends State<LoginScreen> {
 
     try {
       await _authService.signInWithEmailPassword(
-  _emailController.text.trim(),
-  _passwordController.text,
-);
+        _emailController.text.trim(),
+        _passwordController.text,
+      );
 
       if (!mounted) return;
 
@@ -84,7 +83,7 @@ class _LoginScreenState extends State<LoginScreen> {
       context,
       MaterialPageRoute(
         builder: (context) =>
-            userType == 'teacher' ? const TeacherProfile() : const Profile(),
+            userType == 'teacher' ? const TeacherProfile() : const UpdatedProfile(), // เปลี่ยนจาก Profile() เป็น UpdatedProfile()
       ),
     );
   }

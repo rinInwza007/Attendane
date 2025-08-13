@@ -31,8 +31,8 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  supabase_flutter: ^2.7.0
   cupertino_icons: ^1.0.8
+  supabase_flutter: ^2.7.0
   camera: ^0.11.1
   path_provider: ^2.1.4
   path: ^1.9.0
@@ -46,10 +46,12 @@ dependencies:
   collection: ^1.19.1
   gal: ^2.3.1
   image_picker: ^1.1.2
-  connectivity_plus: ^5.0.2 
-  device_info_plus: ^9.1.2   
-  package_info_plus: ^4.2.0 
+  connectivity_plus: ^5.0.2
+  device_info_plus: ^9.1.2
+  package_info_plus: ^4.2.0
   http: ^1.1.0
+  shared_preferences: ^2.0.0
+
 
 dependency_overrides:
   shared_preferences_android: ^2.3.4
