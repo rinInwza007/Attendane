@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:myproject2/data/services/auth_service.dart';
 import 'package:myproject2/data/services/face_recognition_service.dart';
 import 'package:myproject2/presentation/common_widgets/image_picker_screen.dart';
-import 'package:myproject2/presentation/screens/profile/profile.dart';
 import 'package:myproject2/presentation/screens/profile/profileteachaer.dart';
 
 class InputDataPage extends StatefulWidget {
